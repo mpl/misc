@@ -38,11 +38,19 @@ func main() {
 		}
 	}
 
-	// update 
-	result := bson.M{}
-	err = c.Update(bson.M{"three": bson.M{"$exists":true}}, &bson.M{"seven":"7"})
+	// update an existing
+	_, err = c.Upsert(bson.M{"three": bson.M{"$exists":true}}, &bson.M{"seven":"7"})
+	if err != nil {
+		log.Fatal("update: " + err.String())
+	}
+	// update a non existing
+	_, err = c.Upsert(bson.M{"foo": bson.M{"$exists":true}}, &bson.M{"eight":"8"})
+	if err != nil {
+		log.Fatal("update: " + err.String())
+	}
 
 	// iter all
+	result := bson.M{}
 	q := c.Find(nil).Iter()
 	for q.Next(&result) {
 		fmt.Println("********")
