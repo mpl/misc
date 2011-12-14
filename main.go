@@ -39,14 +39,20 @@ func main() {
 	}
 
 	// update an existing
-	_, err = c.Upsert(bson.M{"three": bson.M{"$exists":true}}, &bson.M{"seven":"7"})
+	_, err = c.Upsert(bson.M{"three": bson.M{"$exists":true}}, &bson.M{"eight":"8"})
 	if err != nil {
 		log.Fatal("update: " + err.String())
 	}
 	// update a non existing
-	_, err = c.Upsert(bson.M{"foo": bson.M{"$exists":true}}, &bson.M{"eight":"8"})
+	_, err = c.Upsert(bson.M{"foo": bson.M{"$exists":true}}, &bson.M{"seven":"7"})
 	if err != nil {
 		log.Fatal("update: " + err.String())
+	}
+
+	// remove
+	err = c.Remove(bson.M{"eight": bson.M{"$exists":true}})
+	if err != nil {
+		log.Fatal("remove: " + err.String())
 	}
 
 	// iter all
