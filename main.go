@@ -18,27 +18,37 @@ func main() {
 	session.SetMode(mgo.Monotonic, true)
 	c := session.DB("test").C("things")
 
-//	key := "permanode"
-	result := bson.M{}
-//	var result []bson.M
-	q := c.Find(nil).Iter()
-/*
-	err = q.All(&result)
+	err = c.RemoveAll(nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("remove: " + err.String())
 	}
-	for k,v := range result {
-		fmt.Println(k, v)
+	input := map[string]string{
+		"one": "1",
+		"two": "2",
+		"three": "3",
+		"four": "4",
+		"five": "5",
 	}
-*/
+
+	for k,v := range input {
+		err = c.Insert(&bson.M{k:v})
+		if err != nil {
+			log.Fatal("insert: " + err.String())
+		}
+	}
+
+	result := bson.M{}
+	q := c.Find(nil).Iter()
 
 	for q.Next(&result) {
+		fmt.Println("********")
 		for k,v := range result {
 			fmt.Println(k, v)
 		}
+		result = nil
 	}
 	if q.Err() != nil {
 		log.Fatal(q.Err())
 	}
-//	err = q.One(&result)
+
 }
