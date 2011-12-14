@@ -30,6 +30,7 @@ func main() {
 		"five": "5",
 	}
 
+	// insert input
 	for k,v := range input {
 		err = c.Insert(&bson.M{k:v})
 		if err != nil {
@@ -37,9 +38,12 @@ func main() {
 		}
 	}
 
+	// update 
 	result := bson.M{}
-	q := c.Find(nil).Iter()
+	err = c.Update(bson.M{"three": bson.M{"$exists":true}}, &bson.M{"seven":"7"})
 
+	// iter all
+	q := c.Find(nil).Iter()
 	for q.Next(&result) {
 		fmt.Println("********")
 		for k,v := range result {
