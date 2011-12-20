@@ -34,25 +34,25 @@ func main() {
 
 	// insert input
 	for k,v := range input {
-		err = c.Insert(bson.M{k:v})
+		err = c.Insert(&bson.M{k:v})
 		if err != nil {
 			log.Fatal("insert: " + err.Error())
 		}
 	}
 
 	// update an existing
-	_, err = c.Upsert(bson.M{"three": bson.M{"$exists":true}}, bson.M{"eight":"8"})
+	_, err = c.Upsert(&bson.M{"three": &bson.M{"$exists":true}}, &bson.M{"eight":"8"})
 	if err != nil {
 		log.Fatal("update: " + err.Error())
 	}
 	// update a non existing
-	_, err = c.Upsert(bson.M{"foo": bson.M{"$exists":true}}, bson.M{"seven":"7"})
+	_, err = c.Upsert(&bson.M{"foo": &bson.M{"$exists":true}}, &bson.M{"seven":"7"})
 	if err != nil {
 		log.Fatal("update: " + err.Error())
 	}
 
 	// remove
-	err = c.Remove(bson.M{"eight": bson.M{"$exists":true}})
+	err = c.Remove(&bson.M{"eight": &bson.M{"$exists":true}})
 	if err != nil {
 		log.Fatal("remove: " + err.Error())
 	}
@@ -60,7 +60,7 @@ func main() {
 	// insert escaped dot
 	illegal := "foo.bar"
 	encoded := base64.StdEncoding.EncodeToString([]byte(illegal))
-	err = c.Insert(bson.M{encoded:"fooball"})
+	err = c.Insert(&bson.M{encoded:"fooball"})
 	if err != nil {
 		log.Fatal("insert: " + err.Error())
 	}
@@ -81,7 +81,7 @@ func main() {
 
 	// get escaped one
 	result = nil
-	q := c.Find(bson.M{encoded: bson.M{"$exists": true}})	
+	q := c.Find(&bson.M{encoded: &bson.M{"$exists": true}})	
 	err = q.One(&result)
 	if err != nil {
 		log.Fatal("get: " + err.Error())
@@ -98,7 +98,7 @@ func main() {
 	// insert input
 	for _,v := range input2 {
 		encoded = base64.StdEncoding.EncodeToString([]byte("foobee"))
-		err = c.Insert(bson.M{encoded:v})
+		err = c.Insert(&bson.M{encoded:v})
 		if err != nil {
 			log.Fatal("insert: " + err.Error())
 		}
@@ -107,7 +107,7 @@ func main() {
 	// iter foobees
 	result = nil
 	encoded = base64.StdEncoding.EncodeToString([]byte("foobee"))
-	it = c.Find(bson.M{encoded:&bson.M{"$exists": true}}).Iter()
+	it = c.Find(&bson.M{encoded:&bson.M{"$exists": true}}).Iter()
 	for it.Next(&result) {
 		fmt.Println("****foobees****")
 		for k,v := range result {
@@ -120,17 +120,17 @@ func main() {
 	}
 
 	// insert similar values
-	err = c.Insert(bson.M{"hello":"world"})
+	err = c.Insert(&bson.M{"hello":"world"})
 	if err != nil {
 		log.Fatal("insert: " + err.Error())
 	}
-	err = c.Insert(bson.M{"hello":"war"})
+	err = c.Insert(&bson.M{"hello":"war"})
 	if err != nil {
 		log.Fatal("insert: " + err.Error())
 	}
 	// test regexp
 	result = nil
-	it = c.Find(bson.M{"hello": bson.M{"$regex": "^w"}}).Iter()
+	it = c.Find(&bson.M{"hello": &bson.M{"$regex": "^w"}}).Iter()
 	for it.Next(&result) {
 		fmt.Println("****hellos****")
 		for k,v := range result {
