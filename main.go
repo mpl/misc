@@ -12,14 +12,17 @@ import (
 func main() {
 	session, err := mgo.Mongo("localhost")
 	if err != nil {
-		panic(err)
+		log.Fatal("connecting: " + err.Error())
 	}
 	defer session.Close()
-
-	// Optional. Switch the session to a monotonic behavior.
 	session.SetMode(mgo.Monotonic, true)
-	c := session.DB("test").C("things")
+	session.SetSyncTimeout(2e9)
+	err = session.Ping()
+	if err != nil {
+		log.Fatal("pinging: " + err.Error())
+	}
 
+	c := session.DB("test").C("things")
 	err = c.RemoveAll(nil)
 	if err != nil {
 		log.Fatal("remove: " + err.Error())
