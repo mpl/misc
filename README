@@ -1,0 +1,4 @@
+-mgotests: obviously some tests with mgo to understand its behaviour.
+
+-pidstatAvg: just a trivial way to average the cpu usage from the output of pidstat.
+
