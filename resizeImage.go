@@ -26,6 +26,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 )
 
 // Resize returns a scaled copy of the image slice r of m.
@@ -366,9 +367,19 @@ func main() {
 		log.Fatal("error reading image %s: %v", img, err)
 	}
 
-	_, err = scaleImage(buf, 300, 200)
+//	_, err = scaleImage(buf, 300, 200)
+	i, _, err := image.Decode(buf)
+	if err != nil {
+		log.Fatal("error decoding image: %v", err)
+	}
+	buf.Reset()
+	err = png.Encode(buf, i)
+	if err != nil {
+		log.Fatal("error encoding image: %v", err)
+	}
 
-	g, err := os.Create(img + "-resized")
+	parts := strings.Split(img, ".")
+	g, err := os.Create(parts[0] + "-resized." + "png")
 	if err != nil {
 		log.Fatal(err)
 	}
