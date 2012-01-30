@@ -360,6 +360,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer f.Close()
 
 	buf := bytes.NewBuffer(make([]byte, 0))
 	_, err = io.Copy(buf, f)
@@ -378,11 +379,36 @@ func main() {
 		log.Fatal("error encoding image: %v", err)
 	}
 
+/*
+	buf.Reset()
+	ycbcr := i.(*image.YCbCr)
+	W, H := ycbcr.Bounds().Dx(), ycbcr.Bounds().Dx()
+	for y:= 0; y<H; y++ {
+		for x:= 0; x< W; x++ {
+			c := ycbcr.At(x,y).(color.YCbCr)
+			r, g, b := color.YCbCrToRGB(c.Y, c.Cb, c.Cr)
+			err = buf.WriteByte(r)
+			if err != nil {
+				log.Fatal("error pushing byte: %v", err)
+			}		
+			err = buf.WriteByte(g)
+			if err != nil {
+				log.Fatal("error pushing byte: %v", err)
+			}
+			err = buf.WriteByte(b)
+			if err != nil {
+				log.Fatal("error pushing byte: %v", err)
+			}
+		}
+	}			
+*/
+
 	parts := strings.Split(img, ".")
 	g, err := os.Create(parts[0] + "-resized." + "png")
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer g.Close()
 	_, err = io.Copy(g, buf)
 	if err != nil {
 		log.Fatal("error writing image %s: %v", img + "-resized", err)
