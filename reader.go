@@ -263,22 +263,9 @@ func (d *decoder) processSOS(n int) error {
 		b  block
 		dc [nColorComponent]int
 	)
-	for i := 0; i<len(d.img3.Y); i++ {
-		if d.img3.Y[i] != 0 {
-println("Y: ", d.img3.Y[i])
-		}
-	}
-	for i := 0; i<len(d.img3.Cr); i++ {
-		if d.img3.Cr[i] != 0 {
-println("Cr: ", d.img3.Cr[i])
-		}
-	}
-	for i := 0; i<len(d.img3.Cb); i++ {
-		if d.img3.Cb[i] != 0 {
-println("Cb: ", d.img3.Cb[i])
-		}
-	}
 
+//println(myy) : 100 -> 16 lines per loop?
+//println(mxx): 150
 	for my := 0; my < myy; my++ {
 		for mx := 0; mx < mxx; mx++ {
 			for i := 0; i < d.nComp; i++ {
@@ -368,7 +355,16 @@ println("Cb: ", d.img3.Cb[i])
 			}
 		} // for mx
 	} // for my
-
+/*
+	for y := 0; y< 1600; y++ {
+		if (y / 8) % 2 != 0 {
+				fmt.Printf("")
+			for x:=0; x<1200; x++ {
+				d.img3.Y[y*d.img3.YStride + x]-= 50
+			}
+		}
+	}
+*/
 	return nil
 }
 
