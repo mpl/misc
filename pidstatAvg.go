@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -20,10 +20,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer f.Close()
 
 	sum, count := float64(0), 0
 	b := bufio.NewReader(f)
-	for i:=0; i<3; i++ {
+	for i := 0; i < 3; i++ {
 		b.ReadString('\n')
 	}
 	for {
