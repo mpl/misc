@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 
-	"launchpad.net/gobson/bson"
+	"launchpad.net/mgo/bson"
 	"launchpad.net/mgo"
 )
 
 func main() {
-	session, err := mgo.Mongo("localhost")
+	session, err := mgo.Dial("localhost")
 	if err != nil {
 		log.Fatal("connecting: " + err.Error())
 	}
