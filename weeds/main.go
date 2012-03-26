@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"io"
 	"log"
+	"math"
+	"os"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"strconv"
+	"strings"
 )
 
 type Hello int
@@ -42,46 +48,45 @@ func main() {
 	}
 }
 
-type Searcher interface {
-	Search(species string, fmin float, fmax float)
-}
-
 type Jpl struct {
 	url string
 	species map[int64]string
-	tag map[string]string
+	tag map[string]int64
 	q300 map[int64]float64
 }
 
 func (h *Hello) Search(url *string, jpl *Jpl) error {
 	log.Println("received:", *url)
-
+	jpl = &Jpl{
+		url: *url,
+		species: make(map[int64]string, 1),
+		tag: make(map[string]int64, 1),
+		q300: make(map[int64]float64, 1),
+	}
+	return jpl.readCatdir(*url)
 }
 
-func Query(string species, fmin, fmax float) {
-
-}
-
-func (jpl *Jpl) readCatdir(path string) {
+func (jpl *Jpl) readCatdir(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	bf := bufio.NewReader(f)
 	for {
-		l, _, err := f.ReadLine()
+		l, _, err := bf.ReadLine()
 		if err != nil {
 			if err != io.EOF {
 				return err
 			}
 			break
 		}
-		tag, err := strconv.ParseInt(string(l[0:6]), 0, 0)
+		tag, err := strconv.ParseInt(strings.TrimSpace(string(l[0:6])), 0, 0)
 		if err != nil {
 			return err
 		}
-		species := strings.TrimSpace(l[7:20])
-		exp, err := strconv.ParseFloat(stringl[26:33], 0, 0)
+		species := strings.TrimSpace(string(l[7:20]))
+		exp, err := strconv.ParseFloat(strings.TrimSpace(string(l[26:33])), 64)
 		if err != nil {
 			return err
 		}
@@ -90,4 +95,5 @@ func (jpl *Jpl) readCatdir(path string) {
 		jpl.tag[species] = tag
 		jpl.q300[tag] = q300
 	}
+	return nil
 }
