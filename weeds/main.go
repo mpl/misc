@@ -2,13 +2,17 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
 	"net"
+	"net/http"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -60,7 +64,17 @@ func (h *Hello) Search(url *string, jpl *Jpl) error {
 	jpl.Url = *url
 	jpl.Tag = make(map[string]int64, 1)
 	jpl.Q300 = make(map[string]float64, 1)
-	return jpl.readCatdir(*url)
+/*
+	err := jpl.readCatdir(*url)
+	if err != nil {
+		return err
+	}
+*/
+	err := jpl.query(1232476.0, 9732647.0, "foobar")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (jpl *Jpl) readCatdir(path string) error {
@@ -94,12 +108,23 @@ func (jpl *Jpl) readCatdir(path string) error {
 	return nil
 }
 
-func (jpl *Jpl) query(fmin, fmax, species) error {
+func (jpl *Jpl) query(fmin, fmax float64, species string) error {
 
-	fmin_s := fmt.FormatFloat(fmin * 1e-3, 'f', 9, 32) // MHz -> GHz
-	fmax_s := fmt.FormatFloat(fmax * 1e-3, 'f', 9, 32) // MHz -> GHz
+	fmin_s := strconv.FormatFloat(fmin * 1e-3, 'f', 9, 64) // MHz -> GHz
+	fmax_s := strconv.FormatFloat(fmax * 1e-3, 'f', 9, 64) // MHz -> GHz
 
+	tag := "020002"
 	resp, err := http.PostForm("http://spec.jpl.nasa.gov/cgi-bin/catform",
 		url.Values{"MinNu": {fmin_s}, "MaxNu": {fmax_s},
-		"UnitNu": {"GHz"}, "Mol": {tag}, "StrLim": {-500}})
+		"UnitNu": {"GHz"}, "Mol": {tag}, "StrLim": {"-500"}})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v \n", string(body))
+	return nil
 }
