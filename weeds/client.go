@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/rpc/jsonrpc"
+//	"net/rpc"
 )
 
 type Jpl struct {
-	url string
+	Url string
 	species map[int64]string
-	tag map[string]int64
-	q300 map[int64]float64
+	Tag map[string]int64
+	Q300 map[string]float64
 }
 
 func main() {
@@ -22,11 +23,12 @@ func main() {
 	// Synchronous call
 	yo := "/home/mpl/work/gildas-dev/run/weeds/catdir.cat"
 	args := &yo
-	reply := &Jpl{}
-	err = client.Call("Hello.Search", args, reply)
+//	reply := &Jpl{}
+	var reply Jpl
+	err = client.Call("Hello.Search", args, &reply)
 	if err != nil {
 		log.Fatal("call error:", err)
 	}
-	fmt.Printf("%s", reply.url)
+	fmt.Printf("%s\n", reply.Url)
 	println("done")
 }

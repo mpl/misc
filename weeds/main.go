@@ -44,25 +44,25 @@ func main() {
 		}
 
 		log.Printf("connection started: %v", c.RemoteAddr())
+//		go rpc.ServeConn(c)
 		go jsonrpc.ServeConn(c)
 	}
 }
 
 type Jpl struct {
-	url string
+	Url string
 	species map[int64]string
-	tag map[string]int64
-	q300 map[int64]float64
+	Tag map[string]int64
+	Q300 map[string]float64
 }
 
 func (h *Hello) Search(url *string, jpl *Jpl) error {
 	log.Println("received:", *url)
-	jpl = &Jpl{
-		url: *url,
-		species: make(map[int64]string, 1),
-		tag: make(map[string]int64, 1),
-		q300: make(map[int64]float64, 1),
-	}
+//	*foo = *url
+	jpl.Url = *url
+	jpl.species = make(map[int64]string, 1)
+	jpl.Tag = make(map[string]int64, 1)
+	jpl.Q300 = make(map[string]float64, 1)
 	return jpl.readCatdir(*url)
 }
 
@@ -92,8 +92,8 @@ func (jpl *Jpl) readCatdir(path string) error {
 		}
 		q300 := math.Pow(10, exp)
 		jpl.species[tag] = species
-		jpl.tag[species] = tag
-		jpl.q300[tag] = q300
+		jpl.Tag[species] = tag
+		jpl.Q300[species] = q300
 	}
 	return nil
 }
