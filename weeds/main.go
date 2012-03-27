@@ -51,16 +51,13 @@ func main() {
 
 type Jpl struct {
 	Url string
-	species map[int64]string
 	Tag map[string]int64
 	Q300 map[string]float64
 }
 
 func (h *Hello) Search(url *string, jpl *Jpl) error {
 	log.Println("received:", *url)
-//	*foo = *url
 	jpl.Url = *url
-	jpl.species = make(map[int64]string, 1)
 	jpl.Tag = make(map[string]int64, 1)
 	jpl.Q300 = make(map[string]float64, 1)
 	return jpl.readCatdir(*url)
@@ -91,9 +88,18 @@ func (jpl *Jpl) readCatdir(path string) error {
 			return err
 		}
 		q300 := math.Pow(10, exp)
-		jpl.species[tag] = species
 		jpl.Tag[species] = tag
 		jpl.Q300[species] = q300
 	}
 	return nil
+}
+
+func (jpl *Jpl) query(fmin, fmax, species) error {
+
+	fmin_s := fmt.FormatFloat(fmin * 1e-3, 'f', 9, 32) // MHz -> GHz
+	fmax_s := fmt.FormatFloat(fmax * 1e-3, 'f', 9, 32) // MHz -> GHz
+
+	resp, err := http.PostForm("http://spec.jpl.nasa.gov/cgi-bin/catform",
+		url.Values{"MinNu": {fmin_s}, "MaxNu": {fmax_s},
+		"UnitNu": {"GHz"}, "Mol": {tag}, "StrLim": {-500}})
 }
