@@ -70,7 +70,8 @@ func (h *Hello) Search(url *string, jpl *Jpl) error {
 		return err
 	}
 */
-	err := jpl.query(1232476.0, 9732647.0, "foobar")
+//	err := jpl.query(110178.785, 110214.720, "foobar")
+	err := jpl.query(90000.0, 120000.0, "foobar")
 	if err != nil {
 		return err
 	}
@@ -112,11 +113,13 @@ func (jpl *Jpl) query(fmin, fmax float64, species string) error {
 
 	fmin_s := strconv.FormatFloat(fmin * 1e-3, 'f', 9, 64) // MHz -> GHz
 	fmax_s := strconv.FormatFloat(fmax * 1e-3, 'f', 9, 64) // MHz -> GHz
+	println(fmin_s)
+	println(fmax_s)
 
-	tag := "020002"
+	tag := "041001"
 	resp, err := http.PostForm("http://spec.jpl.nasa.gov/cgi-bin/catform",
 		url.Values{"MinNu": {fmin_s}, "MaxNu": {fmax_s},
-		"UnitNu": {"GHz"}, "Mol": {tag}, "StrLim": {"-500"}})
+		"UnitNu": {"GHz"}, "Mol": {tag}})
 	if err != nil {
 		return err
 	}
