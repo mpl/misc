@@ -39,9 +39,11 @@ var treesdb = "trees.db"
 
 func createTrees(indexed bool, fromScratch bool) {
 	if fromScratch {
-		err := os.Remove(treesdb)
-		if err != nil {
-			log.Fatal(err)
+		if _, err := os.Stat(treesdb); err == nil {
+			err := os.Remove(treesdb)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 	db, err := sql.Open("sqlite3", treesdb)
@@ -52,7 +54,7 @@ func createTrees(indexed bool, fromScratch bool) {
 	query := "create table trees (" +
 		"'species' text, 'country' text, 'leavy' bool, 'foliagecolor' text," +
 		"'trunkcolor' text, 'height' int, 'width' int, 'count' int, 'sick' bool," +
-		" constraint speccountry unique (species, country))"
+		" constraint loose unique (species, country, leavy, foliagecolor, trunkcolor, height, width, sick))"
 	_, err = db.Exec(query)
 	if err != nil {
 		log.Fatal("create: " + err.Error())
@@ -69,7 +71,7 @@ func createTrees(indexed bool, fromScratch bool) {
 	allCountries := []string{"fr", "de", "it", "es", "no", "fi", "se", "uk", "si", "sk", "au"}
 	allColors := []string{"brown", "red", "grey", "green", "yellow", "orange"}
 	i:=0
-	for i < 100 {
+	for i < 10000 {
 		species := allSpecies[rand.Intn(12)]
 		country := allCountries[rand.Intn(11)]
 		foliageColor := allColors[rand.Intn(6)]
@@ -91,8 +93,8 @@ func createTrees(indexed bool, fromScratch bool) {
 		species, country, leavy, foliageColor,  
 		trunkColor, height, width, count, sick)
 		if err != nil {
+			log.Print("insert: " + err.Error())
 			continue
-//			log.Fatal("insert: " + err.Error())
 		}
 		i++
 	}
