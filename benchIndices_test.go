@@ -38,6 +38,10 @@ func BenchmarkCachedCdms(b *testing.B) {
 
 var treesdb = "trees.db"
 
+func init() {
+//	createTrees(false, true)
+}
+
 func createTrees(indexed bool, overwrite bool) {
 	if _, err := os.Stat(treesdb); err == nil {
 		if overwrite {
@@ -56,8 +60,9 @@ func createTrees(indexed bool, overwrite bool) {
 	defer db.Close()
 	query := "create table trees (" +
 		"'species' text, 'country' text, 'leavy' bool, 'foliagecolor' text," +
-		"'trunkcolor' text, 'height' int, 'width' int, 'count' int, 'sick' bool," +
-		" constraint loose unique (species, country, leavy, foliagecolor, trunkcolor, height, width, sick))"
+		"'trunkcolor' text, 'height' int, 'width' int, 'count' int, 'sick' bool)"
+//		"'trunkcolor' text, 'height' int, 'width' int, 'count' int, 'sick' bool," +
+//		" constraint loose unique (species, country, leavy, foliagecolor, trunkcolor, height, width, sick))"
 	_, err = db.Exec(query)
 	if err != nil {
 		log.Fatal("create: " + err.Error())
@@ -78,7 +83,7 @@ func createTrees(indexed bool, overwrite bool) {
 	for j < 1000 {
 	tx, err := db.Begin()
 	i:=0
-	for i < 10 {
+	for i < 1000 {
 		species := allSpecies[rand.Intn(12)]
 		country := allCountries[rand.Intn(11)]
 		foliageColor := allColors[rand.Intn(6)]
@@ -171,8 +176,7 @@ var once sync.Once
 
 func BenchmarkTrees(b *testing.B) {
 	b.StopTimer()
-//	createTrees(true, false)
-//	once.Do(createIndexes)
+	once.Do(createIndexes)
 	b.StartTimer()
 	db, err := sql.Open("sqlite3", treesdb)
 	if err != nil {
