@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"log"
 	"os/exec"
 	"net/smtp"
 	"sync"
@@ -26,10 +27,10 @@ func main() {
 		cmd := exec.Command("/usr/bin/du", "-sch", watched)
 		stdout,	err := cmd.StdoutPipe()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		if err := cmd.Start(); err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		rd := bufio.NewReader(stdout)
 		l, _, err = rd.ReadLine()
@@ -38,7 +39,7 @@ func main() {
 			break
 		}
 		if err := cmd.Wait(); err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		last = cur
 		once.Do(func(){
@@ -48,6 +49,6 @@ func main() {
 	}
 	err := smtp.SendMail(smtpd, nil, from, []string{to}, []byte(msg))
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
