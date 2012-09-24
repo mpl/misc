@@ -83,3 +83,69 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+/* another approach:
+package main
+
+import (
+	"flag"
+	"fmt"
+	"net/http"
+	"sync"
+	
+	"camlistore.org/third_party/github.com/bradfitz/runsit/listen"
+)
+
+var (
+	listenFlag = listen.NewFlag("listen", "", "host:port to listen on, or :0 to auto-select")
+	once sync.Once
+)
+
+func main() {
+	flag.Parse()
+	c := make(chan string, 1)
+	rlis, err := listenFlag.Listen()
+	if err != nil {
+		panic(err)
+	}
+	learner := http.NewServeMux()
+	learner.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "Hello from learner\n")
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+	        panic("no hj")
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+		   panic(err)
+		}
+		err = conn.Close()
+		if err != nil {
+		   panic(err)
+		}
+		once.Do(func(){
+			c <- "foo"
+			close(c)
+		})
+	})
+	go func() {
+		http.Serve(rlis, learner)
+	}()
+	realdeal := http.NewServeMux()
+	realdeal.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "Hello from realdeal\n")
+	})	
+	<- c
+	err = rlis.Close()
+	if err != nil {
+		panic(err)
+	}
+	listenFlag.Set("192.168.0.7:3179")
+	rlis, err = listenFlag.Listen()
+	if err != nil {
+		panic(err)
+	}
+	println("wat")
+	http.Serve(rlis, realdeal)
+}
+*/
