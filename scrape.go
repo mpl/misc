@@ -34,12 +34,14 @@ func scrape() {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	fail := bytes.Index(body, []byte(`<a href="/fail`))
-	if fail == -1 {
+	failGo1 := bytes.Index(body, []byte(`<a href="/fail/go1`))
+	failGotip := bytes.Index(body, []byte(`<a href="/fail/gotip`))
+	if failGo1 == -1 && failGotip == -1 {
 		return
 	}
-	good := bytes.Index(body, []byte(`<a href="/ok`))
-	if good < fail {
+	goodGo1 := bytes.Index(body, []byte(`<a href="/ok/go1`))
+	goodGoTip := bytes.Index(body, []byte(`<a href="/ok/gotip`))
+	if goodGo1 < failGo1 && goodGoTip < failGotip {
 		return
 	}
 	err = smtp.SendMail(smtpd, nil, *emailFrom, []string{*emailTo}, []byte(alert2))
