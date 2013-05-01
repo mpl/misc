@@ -41,7 +41,7 @@ func scrape() {
 	}
 	goodGo1 := bytes.Index(body, []byte(`<a href="/ok/go1`))
 	goodGoTip := bytes.Index(body, []byte(`<a href="/ok/gotip`))
-	if goodGo1 < failGo1 && goodGoTip < failGotip {
+	if (failGo1 == -1 || goodGo1 < failGo1) && (failGotip == -1 || goodGoTip < failGotip) {
 		return
 	}
 	err = smtp.SendMail(smtpd, nil, *emailFrom, []string{*emailTo}, []byte(alert2))
