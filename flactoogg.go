@@ -29,7 +29,64 @@ func init() {
 	flag.IntVar(&quality, "quality", 3, "quality level for oggenc")
 }
 
-func doit(fullpath string) error {
+func main() {
+	flag.Parse()
+	args := flag.Args()
+	if len(args) == 0 {
+		os.Exit(1)
+	}
+	err := convertAll(args)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func convertAll(args []string) error {
+	for _, v := range args {
+		fi, err := os.Stat(v)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("%v is not a valid file or dir\n", v)
+			} else {
+				fmt.Printf("Could not stat %v: %v\n", v, err)
+			}
+			continue
+		}
+		if fi.IsDir() {
+			// We call doit on all the files in the dir, but we
+			// do not recurse down. Because I'm lazy.
+			f, err := os.Open(v)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			names, err := f.Readdirnames(-1)
+			if err != nil {
+				return err
+			}
+			for _, name := range names {
+				err := metaConvert(filepath.Join(v, name))
+				if err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		err = metaConvert(v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func metaConvert(fullpath string) error {
+	if !strings.HasSuffix(fullpath, ".flac") {
+		fmt.Printf("Skipping %v\n", fullpath)
+		return nil
+	}
+	fmt.Printf("Converting %v\n", fullpath)
 	tags, err := meta(fullpath)
 	if err != nil {
 		return err
@@ -45,9 +102,6 @@ func convert(fullpath string, tags map[string]string) error {
 		return err
 	}
 	dir, filename := filepath.Split(fullpath)
-	if !strings.HasSuffix(filename, ".flac") {
-		return fmt.Errorf("filename %v does not end in \".ogg\", giving up.", filename)
-	}
 	outfile := filepath.Join(dir,
 		strings.Replace(filename, ".flac", ".ogg", 1))
 	args := []string{"-", "-q", fmt.Sprintf("%d", quality), "-o", outfile}
@@ -98,17 +152,4 @@ func meta(fullpath string) (map[string]string, error) {
 		tags[k] = v
 	}
 	return tags, nil
-}
-
-func main() {
-	flag.Parse()
-	args := flag.Args()
-	if len(args) == 0 {
-		os.Exit(1)
-	}
-	err := doit(args[0])
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 }
