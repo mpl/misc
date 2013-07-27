@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 var (
@@ -42,43 +43,58 @@ func main() {
 	}
 }
 
+// TODO(mpl): make a -serial option/version.
 func convertAll(args []string) error {
+	cerr := make(chan error)
+	var wg sync.WaitGroup
 	for _, v := range args {
-		fi, err := os.Stat(v)
-		if err != nil {
-			if os.IsNotExist(err) {
-				fmt.Printf("%v is not a valid file or dir\n", v)
-			} else {
-				fmt.Printf("Could not stat %v: %v\n", v, err)
-			}
-			continue
-		}
-		if fi.IsDir() {
-			// We call doit on all the files in the dir, but we
-			// do not recurse down. Because I'm lazy.
-			f, err := os.Open(v)
+		wg.Add(1)
+		go func(somepath string) {
+			defer wg.Done()
+			fi, err := os.Stat(somepath)
 			if err != nil {
-				return err
-			}
-			defer f.Close()
-			names, err := f.Readdirnames(-1)
-			if err != nil {
-				return err
-			}
-			for _, name := range names {
-				err := metaConvert(filepath.Join(v, name))
-				if err != nil {
-					return err
+				if os.IsNotExist(err) {
+					fmt.Printf("%v is not a valid file or dir\n", somepath)
+				} else {
+					fmt.Printf("Could not stat %v: %v\n", somepath, err)
 				}
+				return
 			}
-			continue
-		}
-		err = metaConvert(v)
-		if err != nil {
-			return err
-		}
+			if fi.IsDir() {
+				// We call metaConvert on all the files in the dir,
+				//  but we do not recurse down. Because I'm lazy.
+				f, err := os.Open(somepath)
+				if err != nil {
+					cerr <- err
+					return
+				}
+				defer f.Close()
+				names, err := f.Readdirnames(-1)
+				if err != nil {
+					cerr <- err
+					return
+				}
+				for _, name := range names {
+					err := metaConvert(filepath.Join(somepath, name))
+					if err != nil {
+						cerr <- err
+						return
+					}
+				}
+				return
+			}
+			err = metaConvert(somepath)
+			if err != nil {
+				cerr <- err
+			}
+		}(v)
 	}
-	return nil
+	go func() {
+		wg.Wait()
+		cerr <- nil
+	}()
+	err := <-cerr
+	return err
 }
 
 func metaConvert(fullpath string) error {
