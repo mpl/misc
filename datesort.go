@@ -63,16 +63,20 @@ func renameSorted(sorted []string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-		g, err := os.Create(newName)
+		// not using defer to close because we can run out of file handlers
+		g, err := os.OpenFile(newName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0644)
 		if err != nil {
-			return err
+			return fmt.Errorf("Could not create %v: %v", newName, err)
+			f.Close()
 		}
-		defer g.Close()
 		_, err = io.Copy(g, f)
 		if err != nil {
+			f.Close()
+			g.Close()
 			return err
 		}
+		f.Close()
+		g.Close()
 	}
 	return nil
 }
