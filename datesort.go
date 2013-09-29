@@ -23,6 +23,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -32,11 +33,74 @@ import (
 
 const outDir = "timeSorted"
 
+var (
+	integrityCheck = flag.Bool("check", false, "Check with md5sum that all initial files end up in the out dir")
+	dry            = flag.Bool("dry", false, "Do not actually write the renamed files.")
+)
+
 func main() {
 	flag.Parse()
 	args := flag.Args()
 	sortedNames := sortByTime(args)
-	renameSorted(sortedNames)
+	if !*dry {
+		renameSorted(sortedNames)
+	}
+	finalCheck(args)
+}
+
+// make it do things concurrently?
+func finalCheck(inputFiles []string) {
+	f, err := os.Open(outDir)
+	if err != nil {
+		log.Fatalf("Could not open %v: %v", outDir, err)
+	}
+	defer f.Close()
+	names, err := f.Readdirnames(-1)
+	if err != nil {
+		log.Fatalf("Could not read dir names for %v: %v", outDir, err)
+	}
+	if len(names) != len(inputFiles) {
+		log.Printf("Number of input args: %d - number of files in %v: %d", len(inputFiles), outDir, len(names))
+	}
+
+	renamedHashes := make(map[string]string)
+	for _, v := range names {
+		cmd := exec.Command("md5sum", filepath.Join(outDir, v))
+		out, err := cmd.Output()
+		if err != nil {
+			log.Fatalf("Could not exec %v: %v", out, err)
+		}
+		sum := strings.SplitN(string(out), " ", 2)[0]
+		println(v + ": " + sum)
+		renamedHashes[v] = sum
+	}
+
+	inputHashes := make(map[string]string)
+	for _, v := range inputFiles {
+		cmd := exec.Command("md5sum", v)
+		out, err := cmd.Output()
+		if err != nil {
+			log.Fatalf("Could not exec md5sum %v: %v", v, err)
+		}
+		sum := strings.SplitN(string(out), " ", 2)[0]
+		println(v + ": " + sum)
+		inputHashes[v] = sum
+	}
+
+	for inputFile, inputHash := range inputHashes {
+		found := ""
+		for renamed, renamedHash := range renamedHashes {
+			if inputHash == renamedHash {
+				found = renamed
+				break
+			}
+		}
+		if found == "" {
+			log.Printf("%v was not found in the output files", inputFile)
+		} else {
+			delete(renamedHashes, found)
+		}
+	}
 }
 
 func renameSorted(sorted []string) error {
@@ -85,8 +149,8 @@ func renameSorted(sorted []string) error {
 func sortByTime(names []string) []string {
 	timeToName := make(map[string]string)
 	var times []string
-	for _, v := range names {
-		f, err := os.Open(v)
+	for _, name := range names {
+		f, err := os.Open(name)
 		if err != nil {
 			log.Print(err)
 			continue
@@ -94,10 +158,16 @@ func sortByTime(names []string) []string {
 		defer f.Close()
 		dt, err := DecodeDate(f)
 		if err != nil {
-			log.Print(err)
+			log.Printf("%v: %v", name, err)
 			continue
 		}
-		timeToName[dt] = v
+		if sametime, ok := timeToName[dt]; ok {
+			// TODO(mpl): looks like DateTime is precise only up to the second, so this can definitely happen.
+			// 1) use Sub-second Time tag?
+			// 2) just append something to the name. not a number based scheme as that would require us to remember all dups. just a string of rand chars maybe?
+			log.Fatalf("%v and %v have the same time %v. increase precision?", sametime, name, dt)
+		}
+		timeToName[dt] = name
 		times = append(times, dt)
 	}
 	sort.Strings(times)
@@ -126,8 +196,8 @@ func DecodeDate(r io.Reader) (string, error) {
 	if date.Type != 2 {
 		return t, errors.New("DateTime[Original] not in string format")
 	}
-//	exifTimeLayout := "2006:01:02 15:04:05"
-//	dateStr := strings.TrimRight(date.StringVal(), "\x00")
-//	return time.Parse(exifTimeLayout, dateStr)
+	//	exifTimeLayout := "2006:01:02 15:04:05"
+	//	dateStr := strings.TrimRight(date.StringVal(), "\x00")
+	//	return time.Parse(exifTimeLayout, dateStr)
 	return strings.TrimRight(date.StringVal(), "\x00"), nil
 }
