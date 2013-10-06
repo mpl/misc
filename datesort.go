@@ -34,7 +34,7 @@ import (
 const outDir = "timeSorted"
 
 var (
-	integrityCheck = flag.Bool("check", false, "Check with md5sum that all initial files end up in the out dir")
+	check = flag.Bool("check", false, "Check with md5sum that all initial files end up in the out dir")
 	dry            = flag.Bool("dry", false, "Do not actually write the renamed files.")
 )
 
@@ -45,7 +45,9 @@ func main() {
 	if !*dry {
 		renameSorted(sortedNames)
 	}
-	finalCheck(args)
+	if *check {
+		finalCheck(args)
+	}
 }
 
 // make it do things concurrently?
@@ -71,7 +73,7 @@ func finalCheck(inputFiles []string) {
 			log.Fatalf("Could not exec %v: %v", out, err)
 		}
 		sum := strings.SplitN(string(out), " ", 2)[0]
-		println(v + ": " + sum)
+//		println(v + ": " + sum)
 		renamedHashes[v] = sum
 	}
 
@@ -83,7 +85,7 @@ func finalCheck(inputFiles []string) {
 			log.Fatalf("Could not exec md5sum %v: %v", v, err)
 		}
 		sum := strings.SplitN(string(out), " ", 2)[0]
-		println(v + ": " + sum)
+//		println(v + ": " + sum)
 		inputHashes[v] = sum
 	}
 
@@ -162,10 +164,19 @@ func sortByTime(names []string) []string {
 			continue
 		}
 		if sametime, ok := timeToName[dt]; ok {
-			// TODO(mpl): looks like DateTime is precise only up to the second, so this can definitely happen.
-			// 1) use Sub-second Time tag?
-			// 2) just append something to the name. not a number based scheme as that would require us to remember all dups. just a string of rand chars maybe?
-			log.Fatalf("%v and %v have the same time %v. increase precision?", sametime, name, dt)
+			// this can happen because DateTime is apparently only precise up to the second
+			log.Printf("%v and %v have the same time %v. now appending suffix to time key for uniqueness.", sametime, name, dt)
+			i := 1
+			for {
+				newtime := fmt.Sprintf("%s-%d", dt, i)
+				if _, ok := timeToName[newtime]; !ok {
+					// does not exist, all good
+					dt = newtime
+					break
+				}
+				// already exists, increase suffix.
+				i++
+			}
 		}
 		timeToName[dt] = name
 		times = append(times, dt)
