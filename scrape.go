@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	smtpd    = "localhost:25"
+	smtpd    = "serenity:25"
 	alert1   = "Subject: camlibot alert. Page not found."
 	alert2   = "Subject: camlibot alert. Build or run failed."
 	interval = time.Hour
@@ -50,6 +50,16 @@ func scrape() {
 	}
 }
 
+type noAuth struct{}
+
+func (na noAuth) Start(server *smtp.ServerInfo) (proto string, toServer []byte, err error) {
+	return "", nil, nil
+}
+
+func (na noAuth) Next(fromServer []byte, more bool) (toServer []byte, err error) {
+	return nil, nil
+}
+
 func main() {
 	flag.Parse()
 	if *page == "" {
@@ -58,8 +68,14 @@ func main() {
 	if *emailTo == "" || *emailFrom == "" {
 		log.Fatal("Need emailfrom and emailto")
 	}
-	for {
-		scrape()
-		time.Sleep(interval)
+	err := smtp.SendMail(smtpd, noAuth{}, *emailFrom, []string{*emailTo}, []byte("Subject: test sur vpn. Wat."))
+	if err != nil {
+		log.Fatal(err)
 	}
+	/*
+		for {
+			scrape()
+			time.Sleep(interval)
+		}
+	*/
 }
