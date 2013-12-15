@@ -35,7 +35,7 @@ const outDir = "timeSorted"
 
 var (
 	check = flag.Bool("check", false, "Check with md5sum that all initial files end up in the out dir")
-	dry            = flag.Bool("dry", false, "Do not actually write the renamed files.")
+	dry   = flag.Bool("dry", false, "Do not actually write the renamed files.")
 )
 
 func main() {
@@ -73,7 +73,7 @@ func finalCheck(inputFiles []string) {
 			log.Fatalf("Could not exec %v: %v", out, err)
 		}
 		sum := strings.SplitN(string(out), " ", 2)[0]
-//		println(v + ": " + sum)
+		//		println(v + ": " + sum)
 		renamedHashes[v] = sum
 	}
 
@@ -85,7 +85,7 @@ func finalCheck(inputFiles []string) {
 			log.Fatalf("Could not exec md5sum %v: %v", v, err)
 		}
 		sum := strings.SplitN(string(out), " ", 2)[0]
-//		println(v + ": " + sum)
+		//		println(v + ": " + sum)
 		inputHashes[v] = sum
 	}
 
@@ -121,6 +121,8 @@ func renameSorted(sorted []string) error {
 			filename = fmt.Sprintf("%02d.jpg", k+1)
 		case l < 1000:
 			filename = fmt.Sprintf("%03d.jpg", k+1)
+		case l < 10000:
+			filename = fmt.Sprintf("%04d.jpg", k+1)
 		default:
 			panic("more than 10000 pics. you crazy.")
 		}
@@ -157,8 +159,8 @@ func sortByTime(names []string) []string {
 			log.Print(err)
 			continue
 		}
-		defer f.Close()
 		dt, err := DecodeDate(f)
+		f.Close()
 		if err != nil {
 			log.Printf("%v: %v", name, err)
 			continue
