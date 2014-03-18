@@ -14,6 +14,11 @@ const (
 	alert1   = "Subject: camlibot alert. Page not found."
 	alert2   = "Subject: camlibot alert. Build or run failed."
 	interval = time.Hour
+	// TODO(mpl): regexp
+	failGo1Pattern = "/fail/linux_amd64/go1"
+	failGotipPattern = "/fail/linux_amd64/gotip"
+	okGo1Pattern = "/ok/linux_amd64/go1"
+	okGotipPattern = "/ok/linux_amd64/gotip"
 )
 
 var (
@@ -34,13 +39,13 @@ func scrape() {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	failGo1 := bytes.Index(body, []byte(`<a href="/fail/go1`))
-	failGotip := bytes.Index(body, []byte(`<a href="/fail/gotip`))
+	failGo1 := bytes.Index(body, []byte(`<a href="`+failGo1Pattern))
+	failGotip := bytes.Index(body, []byte(`<a href="`+failGotipPattern))
 	if failGo1 == -1 && failGotip == -1 {
 		return
 	}
-	goodGo1 := bytes.Index(body, []byte(`<a href="/ok/go1`))
-	goodGoTip := bytes.Index(body, []byte(`<a href="/ok/gotip`))
+	goodGo1 := bytes.Index(body, []byte(`<a href="`+okGo1Pattern))
+	goodGoTip := bytes.Index(body, []byte(`<a href="`+okGotipPattern))
 	if (failGo1 == -1 || goodGo1 < failGo1) && (failGotip == -1 || goodGoTip < failGotip) {
 		return
 	}
