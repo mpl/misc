@@ -28,7 +28,7 @@ func scrape() {
 	if err != nil {
 		err = SendMail(*smtpAddr, *emailFrom, []string{*emailTo}, []byte(alert1))
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("%v", err)
 		}
 		return
 	}
@@ -46,7 +46,7 @@ func scrape() {
 	}
 	err = SendMail(*smtpAddr, *emailFrom, []string{*emailTo}, []byte(alert2))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("%v", err)
 	}
 }
 
