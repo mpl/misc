@@ -15,10 +15,12 @@ const (
 	alert2   = "Subject: camlibot alert. Build or run failed."
 	interval = time.Hour
 	// TODO(mpl): regexp
-	failGo1Pattern = "/fail/linux_amd64/go1"
+	failGo1Pattern   = "/fail/linux_amd64/go1"
 	failGotipPattern = "/fail/linux_amd64/gotip"
-	okGo1Pattern = "/ok/linux_amd64/go1"
-	okGotipPattern = "/ok/linux_amd64/gotip"
+	okGo1Pattern     = "/ok/linux_amd64/go1"
+	okGotipPattern   = "/ok/linux_amd64/gotip"
+	datePattern      = `<td class="hash">`
+	lenDate          = 19
 )
 
 var (
@@ -26,6 +28,11 @@ var (
 	emailTo   = flag.String("emailto", "", "address where to send an alert when failing")
 	emailFrom = flag.String("emailfrom", "", "alert sender email address")
 	smtpAddr  = flag.String("smtp", "localhost:25", "where to relay the message")
+)
+
+var (
+	latestRunTime string
+	prevRunTime   string
 )
 
 func scrape() {
@@ -39,16 +46,32 @@ func scrape() {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+
+	datePos := bytes.Index(body, []byte(datePattern)) + len(datePattern)
+	latestRunTime = string(body[datePos : datePos+lenDate])
+	if prevRunTime == "" {
+		prevRunTime = latestRunTime
+	} else {
+		// TODO(mpl): actually parse them as Time and properly compare.
+		// whatever. I have the flu so I'm allowed.
+		if latestRunTime == prevRunTime {
+			return
+		}
+		prevRunTime = latestRunTime
+	}
+
 	failGo1 := bytes.Index(body, []byte(`<a href="`+failGo1Pattern))
 	failGotip := bytes.Index(body, []byte(`<a href="`+failGotipPattern))
 	if failGo1 == -1 && failGotip == -1 {
 		return
 	}
+
 	goodGo1 := bytes.Index(body, []byte(`<a href="`+okGo1Pattern))
 	goodGoTip := bytes.Index(body, []byte(`<a href="`+okGotipPattern))
 	if (failGo1 == -1 || goodGo1 < failGo1) && (failGotip == -1 || goodGoTip < failGotip) {
 		return
 	}
+
 	err = SendMail(*smtpAddr, *emailFrom, []string{*emailTo}, []byte(alert2))
 	if err != nil {
 		log.Printf("%v", err)
