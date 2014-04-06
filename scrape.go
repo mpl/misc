@@ -2,18 +2,27 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/smtp"
 	"time"
+
+	"github.com/mpl/gocron"
+)
+
+var (
+	emailFrom = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
+	notiPort  = flag.Int("port", 9688, "port for the local http server used for browser notifications")
+	page      = flag.String("page", "", "page/address to scrape")
+	interval  = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
 )
 
 const (
-	alert1   = "Subject: camlibot alert. Page not found."
-	alert2   = "Subject: camlibot alert. Build or run failed."
-	interval = time.Hour
+	alert1 = "Subject: camlibot alert. Page not found."
+	alert2 = "Subject: camlibot alert. Build or run failed."
 	// TODO(mpl): regexp
 	failGo1Pattern   = "/fail/linux_amd64/go1"
 	failGotipPattern = "/fail/linux_amd64/gotip"
@@ -23,26 +32,17 @@ const (
 	lenDate          = 19
 )
 
-var (
-	page      = flag.String("page", "", "page/address to scrape")
-	emailTo   = flag.String("emailto", "", "address where to send an alert when failing")
-	emailFrom = flag.String("emailfrom", "", "alert sender email address")
-	smtpAddr  = flag.String("smtp", "localhost:25", "where to relay the message")
-)
+var ()
 
 var (
 	latestRunTime string
 	prevRunTime   string
 )
 
-func scrape() {
+func scrape() error {
 	resp, err := http.Get(*page)
 	if err != nil {
-		err = SendMail(*smtpAddr, *emailFrom, []string{*emailTo}, []byte(alert1))
-		if err != nil {
-			log.Printf("%v", err)
-		}
-		return
+		return fmt.Errorf("could not fetch page at %v: %v", *page, err)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -55,7 +55,7 @@ func scrape() {
 		// TODO(mpl): actually parse them as Time and properly compare.
 		// whatever. I have the flu so I'm allowed.
 		if latestRunTime == prevRunTime {
-			return
+			return nil
 		}
 		prevRunTime = latestRunTime
 	}
@@ -63,64 +63,45 @@ func scrape() {
 	failGo1 := bytes.Index(body, []byte(`<a href="`+failGo1Pattern))
 	failGotip := bytes.Index(body, []byte(`<a href="`+failGotipPattern))
 	if failGo1 == -1 && failGotip == -1 {
-		return
+		return nil
 	}
 
 	goodGo1 := bytes.Index(body, []byte(`<a href="`+okGo1Pattern))
 	goodGoTip := bytes.Index(body, []byte(`<a href="`+okGotipPattern))
 	if (failGo1 == -1 || goodGo1 < failGo1) && (failGotip == -1 || goodGoTip < failGotip) {
-		return
+		return nil
 	}
 
-	err = SendMail(*smtpAddr, *emailFrom, []string{*emailTo}, []byte(alert2))
-	if err != nil {
-		log.Printf("%v", err)
-	}
-}
-
-// SendMail connects to the server at addr, authenticates with the
-// optional mechanism a if possible, and then sends an email from
-// address from, to addresses to, with message msg.
-func SendMail(addr string, from string, to []string, msg []byte) error {
-	c, err := smtp.Dial(addr)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	if err = c.Mail(from); err != nil {
-		return err
-	}
-	for _, addr := range to {
-		if err = c.Rcpt(addr); err != nil {
-			return err
-		}
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(msg)
-	if err != nil {
-		return err
-	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	return c.Quit()
+	return errors.New("build or run failed.")
 }
 
 func main() {
 	flag.Parse()
-	if *page == "" {
-		log.Fatal("Need a page to scrape")
+	if *emailFrom == "" {
+		log.Fatal("Need emailfrom")
 	}
-	if *emailTo == "" || *emailFrom == "" {
-		log.Fatal("Need emailfrom and emailto")
+
+	if *interval < 0 {
+		log.Fatal("negative duration? what does it meeaaaann!?")
 	}
-	// TODO(mpl): Y U NO SHOW FROM anymore?
-	for {
-		scrape()
-		time.Sleep(interval)
+	jobInterval := time.Duration(*interval) * time.Second
+	cron := gocron.Cron{
+		Interval: jobInterval,
+		Job:      scrape,
+		Mail: &gocron.MailAlert{
+			Subject: "Scrape error",
+			To:      []string{"mpl@mpl.fr.eu.org"},
+			From:    *emailFrom,
+			SMTP:    "serenity:25",
+		},
+		Notif: &gocron.Notification{
+			Host: fmt.Sprintf("localhost:%d", *notiPort),
+			Msg:  "Scrape error",
+		},
+		File: &gocron.StaticFile{
+			Path: "/home/mpl/var/log/scrape.log",
+			Msg:  "Scrape error",
+		},
 	}
+	cron.Run()
 }
