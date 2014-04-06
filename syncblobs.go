@@ -14,7 +14,7 @@ import (
 var (
 	emailFrom = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
 	notiPort  = flag.Int("port", 9687, "port for the local http server used for browser notifications")
-	once      = flag.Bool("once", false, "whether to run this sync only once instead of every hour")
+	interval  = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
 )
 
 func syncBlobs() error {
@@ -35,12 +35,12 @@ func main() {
 		log.Fatal("Need emailfrom")
 	}
 
-	interval := time.Hour
-	if *once {
-		interval = 0
+	if *interval < 0 {
+		log.Fatal("negative duration? what does it meeaaaann!?")
 	}
+	jobInterval := time.Duration(*interval) * time.Second
 	cron := gocron.Cron{
-		Interval: interval,
+		Interval: jobInterval,
 		Job:      syncBlobs,
 		Mail: &gocron.MailAlert{
 			Subject: "Syncblobs error",
