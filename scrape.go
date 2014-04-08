@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mpl/gocron"
@@ -18,11 +19,10 @@ var (
 	notiPort  = flag.Int("port", 9688, "port for the local http server used for browser notifications")
 	page      = flag.String("page", "", "page/address to scrape")
 	interval  = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
+	verbose   = flag.Bool("v", false, "verbose")
 )
 
 const (
-	alert1 = "Subject: camlibot alert. Page not found."
-	alert2 = "Subject: camlibot alert. Build or run failed."
 	// TODO(mpl): regexp
 	failGo1Pattern   = "/fail/linux_amd64/go1"
 	failGotipPattern = "/fail/linux_amd64/gotip"
@@ -32,20 +32,33 @@ const (
 	lenDate          = 19
 )
 
-var ()
-
 var (
 	latestRunTime string
 	prevRunTime   string
 )
 
-func scrape() error {
+func getPage() ([]byte, error) {
+	if !strings.HasPrefix(*page, "http://") {
+		// assume local file. for testing.
+		return ioutil.ReadFile(*page)
+	}
 	resp, err := http.Get(*page)
 	if err != nil {
-		return fmt.Errorf("could not fetch page at %v: %v", *page, err)
+		return nil, fmt.Errorf("could not fetch page at %v: %v", *page, err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	return ioutil.ReadAll(resp.Body)
+}
+
+func scrape() error {
+	body, err := getPage()
+	if err != nil {
+		// TODO(mpl): logger exists only when *verbose
+		if *verbose {
+			log.Printf("%v", err)
+		}
+		return err
+	}
 
 	datePos := bytes.Index(body, []byte(datePattern)) + len(datePattern)
 	latestRunTime = string(body[datePos : datePos+lenDate])
@@ -55,6 +68,9 @@ func scrape() error {
 		// TODO(mpl): actually parse them as Time and properly compare.
 		// whatever. I have the flu so I'm allowed.
 		if latestRunTime == prevRunTime {
+			if *verbose {
+				log.Print("No new run")
+			}
 			return nil
 		}
 		prevRunTime = latestRunTime
@@ -63,15 +79,22 @@ func scrape() error {
 	failGo1 := bytes.Index(body, []byte(`<a href="`+failGo1Pattern))
 	failGotip := bytes.Index(body, []byte(`<a href="`+failGotipPattern))
 	if failGo1 == -1 && failGotip == -1 {
+		if *verbose {
+			log.Print("No fail at all")
+		}
 		return nil
 	}
 
 	goodGo1 := bytes.Index(body, []byte(`<a href="`+okGo1Pattern))
 	goodGoTip := bytes.Index(body, []byte(`<a href="`+okGotipPattern))
 	if (failGo1 == -1 || goodGo1 < failGo1) && (failGotip == -1 || goodGoTip < failGotip) {
+		if *verbose {
+			log.Print("No recent fail")
+		}
 		return nil
 	}
 
+	log.Print("build or run failed.")
 	return errors.New("build or run failed.")
 }
 
