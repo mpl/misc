@@ -59,6 +59,7 @@ func ServeTail(w http.ResponseWriter, r *http.Request) {
 	user, pass, err := basicAuth(r)
 	if err != nil {
 		sendUnauthorized(w, r)
+		return
 	}
 	if user != *username || pass != *password {
 		sendUnauthorized(w, r)
