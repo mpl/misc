@@ -25,7 +25,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			panic(err)
+		}
+	}()
 	log.SetOutput(logger)
 
 	dir, err := os.Open(".")
@@ -43,20 +47,28 @@ func main() {
 		}
 		kom, err := grep(name, marker)
 		if err != nil {
-			log.Fatalf("could not grep in %v: %v", name, err)
+			log.Printf("could not grep kom number in %v: %v", name, err)
+			continue
 		}
-		newName := strings.Replace(kom, "/", "_", 1)+".doc"
+		kom =  strings.Replace(kom, "/", "_", 1)
+		kom =  strings.Replace(kom, "item", "_", 1)
+		newName := kom+".doc"
 		if newName == name {
 			continue
 		}
 		if *dryrun {
 			log.Printf("would rename %v into %v", name, newName)
-		} else {
-			if err := os.Rename(name, newName); err != nil {
-				log.Fatalf("error renaming %v into %v: %v", name, newName, err)
-			}
-		}		
-	}
+			continue
+		}
+		if _, err := os.Stat(newName); err == nil {
+			log.Printf("renaming %v into %v would overwrite an existing file. won't do it.", name, newName)
+			continue
+		}
+		if err := os.Rename(name, newName); err != nil {
+				log.Printf("error renaming %v into %v: %v", name, newName, err)
+				continue
+		}
+	}		
 }
 
 func slurp(sc *bufio.Scanner) (string, error) {
@@ -75,7 +87,7 @@ func slurp(sc *bufio.Scanner) (string, error) {
 	return slurped, nil
 }
 
-var komPattern = regexp.MustCompile(`([0-9]+\.[0-9]+\.[0-9]+/[0-9]+)`)
+var komPattern = regexp.MustCompile(`([0-9]+\.[0-9]+\.[0-9]+(/|item)[0-9]+)`)
 
 func grep(filePath string, marker string) (string, error) {
 	f, err := os.Open(filePath)
