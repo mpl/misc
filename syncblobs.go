@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,13 +18,15 @@ import (
 
 const configDir = "/home/mpl/.config/granivore/"
 
-// TODO(mpl): prompt or server listens for password.
+// TODO(mpl): askAuth. meh. maybe listenAuth is enough.
 
 var (
-	emailFrom = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
-	notiPort  = flag.Int("port", 9687, "port for the local http server used for browser notifications")
-	interval  = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
-	auth      = flag.String("auth", "", "Use this auth string instead of the one in the config file.")
+	emailFrom  = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
+	notiPort   = flag.Int("port", 9687, "port for the local http server used for browser notifications")
+	interval   = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
+	auth       = flag.String("auth", "", "Use this auth string instead of the one in the config file. Conflicts with -auth and -waitauth.")
+	askAuth    = flag.Bool("askauth", false, "Prompt for the auth string on stdin. Conflicts with -auth and -waitauth.")
+	listenAuth = flag.String("listenauth", "", "Listen on this address and wait for the auth string there. Conflicts with -auth and -askauth.")
 )
 
 func syncBlobs() error {
@@ -70,15 +73,71 @@ func fillConfig() (func() error, error) {
 	return revertConfig, nil
 }
 
-func main() {
-	flag.Parse()
+func numSet(vv ...interface{}) (num int) {
+	for _, vi := range vv {
+		switch v := vi.(type) {
+		case string:
+			if v != "" {
+				num++
+			}
+		case bool:
+			if v {
+				num++
+			}
+		default:
+			panic("unknown type")
+		}
+	}
+	return
+}
+
+func checkFlags() {
 	if *emailFrom == "" {
 		log.Fatal("Need emailfrom")
 	}
-
 	if *interval < 0 {
 		log.Fatal("negative duration? what does it meeaaaann!?")
 	}
+	if numSet(*auth, *askAuth, *listenAuth) > 1 {
+		log.Fatal("-auth, -askauth and -listenauth are mutually exclusive.")
+	}
+}
+
+func authHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "bad method", http.StatusBadRequest)
+		return
+	}
+	auth := r.FormValue("auth")
+	if auth == "" {
+		http.Error(w, "bad method", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK\n"))
+	cAuth <- auth
+}
+
+var cAuth chan string
+
+func main() {
+	flag.Parse()
+	checkFlags()
+
+	if *listenAuth != "" {
+		cAuth = make(chan string)
+		go func() {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", authHandler)
+			println("Send the \"auth\" parameter in a POST request (curl -d) to " + *listenAuth)
+			if err := http.ListenAndServe(*listenAuth, mux); err != nil {
+				log.Fatal(err)
+			}
+		}()
+		*auth = <-cAuth
+		println(*auth)
+	}
+
 	if cleanup, err := fillConfig(); err != nil {
 		log.Fatal(err)
 	} else {
