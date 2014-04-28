@@ -19,6 +19,7 @@ import (
 const configDir = "/home/mpl/.config/granivore/"
 
 // TODO(mpl): askAuth. meh. maybe listenAuth is enough.
+// TODO(mpl): fix cAuth lock.
 
 var (
 	emailFrom  = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
@@ -114,6 +115,7 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK\n"))
+	// TODO(mpl): ugh. will block after first one. use a once or something.
 	cAuth <- auth
 }
 
