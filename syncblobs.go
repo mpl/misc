@@ -57,7 +57,6 @@ func fillConfig() (func() error, error) {
 	}
 	authString := fmt.Sprintf("\"auth\": \"%s\",\n", *auth)
 	newData := append(data[:insertPos], append([]byte(authString), data[insertPos:]...)...)
-	println(string(newData))
 	if err := os.Rename(configFile, configFile+".ini"); err != nil {
 		return noop, err
 	}
@@ -135,7 +134,6 @@ func main() {
 			}
 		}()
 		*auth = <-cAuth
-		println(*auth)
 	}
 
 	if cleanup, err := fillConfig(); err != nil {
