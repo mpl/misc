@@ -141,6 +141,7 @@ func main() {
 	}
 
 	if cleanup, err := fillConfig(); err != nil {
+		cleanup()
 		log.Fatal(err)
 	} else {
 		defer cleanup()
