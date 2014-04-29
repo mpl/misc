@@ -20,6 +20,7 @@ const configDir = "/home/mpl/.config/granivore/"
 
 // TODO(mpl): askAuth. meh. maybe listenAuth is enough.
 // TODO(mpl): fix cAuth lock.
+// TODO(mpl): see in fillconfig
 
 var (
 	emailFrom  = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
@@ -52,6 +53,7 @@ func fillConfig() (func() error, error) {
 	if *auth == "" {
 		return noop, nil
 	}
+	// TODO(mpl): overwrite auth field if it's already there
 	insertPos := bytes.Index(data, []byte(`"server": `))
 	if insertPos < 0 {
 		return noop, errors.New("insert pos not found")
