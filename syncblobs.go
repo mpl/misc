@@ -32,6 +32,12 @@ var (
 )
 
 func syncBlobs() error {
+	restoreConfig, err := fillConfig()
+	if err != nil {
+		restoreConfig()
+		return fmt.Errorf("could not prepare config: %v", err)
+	}
+	defer restoreConfig()
 	args := []string{"sync", "-src=granivore", "-dest=/home/mpl/var/camlistore-granivore/blobs/"}
 	cmd := exec.Command("/home/mpl/bin/camtool-grani", args...)
 	env := os.Environ()
@@ -53,13 +59,28 @@ func fillConfig() (func() error, error) {
 	if *auth == "" {
 		return noop, nil
 	}
-	// TODO(mpl): overwrite auth field if it's already there
-	insertPos := bytes.Index(data, []byte(`"server": `))
-	if insertPos < 0 {
-		return noop, errors.New("insert pos not found")
+	erasePos, insertPos := -1, -1
+	erasePos = bytes.Index(data, []byte(`"auth": `))
+	if erasePos > 0 {
+		insertPos = bytes.Index(data[erasePos:], []byte("\n"))
+		if insertPos < 0 {
+			return noop, errors.New("could not find eol for \"auth\" line")
+		}
+		insertPos += erasePos + 1
+	} else {
+		insertPos = bytes.Index(data, []byte(`"server": `))
+		if insertPos < 0 {
+			return noop, errors.New("insert pos not found")
+		}
+		erasePos = bytes.LastIndex(data[:insertPos], []byte("\n"))
+		if erasePos < 0 {
+			return noop, errors.New("could not find eol before \"server\" line")
+		}
+		erasePos++
+		insertPos = erasePos
 	}
 	authString := fmt.Sprintf("\"auth\": \"%s\",\n", *auth)
-	newData := append(data[:insertPos], append([]byte(authString), data[insertPos:]...)...)
+	newData := append(data[:erasePos], append([]byte(authString), data[insertPos:]...)...)
 	if err := os.Rename(configFile, configFile+".ini"); err != nil {
 		return noop, err
 	}
@@ -143,9 +164,12 @@ func main() {
 	if cleanup, err := fillConfig(); err != nil {
 		cleanup()
 		log.Fatal(err)
-	} else {
-		defer cleanup()
 	}
+	return
+
+//	else {
+//		defer cleanup()
+//	}
 
 	jobInterval := time.Duration(*interval) * time.Second
 	cron := gocron.Cron{
