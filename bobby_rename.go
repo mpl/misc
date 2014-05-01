@@ -2,16 +2,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 )
 
 const (
-	marker = "Kom.Nr"
+	marker  = "Kom.Nr"
 	logFile = "errors.log"
 )
 
@@ -41,7 +41,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _,name := range names {
+	for _, name := range names {
 		if !strings.HasSuffix(name, ".doc") {
 			continue
 		}
@@ -50,9 +50,10 @@ func main() {
 			log.Printf("could not grep kom number in %v: %v", name, err)
 			continue
 		}
-		kom =  strings.Replace(kom, "/", "_", 1)
-		kom =  strings.Replace(kom, "item", "_", 1)
-		newName := kom+".doc"
+		log.Printf("found kom number: %v", kom)
+		kom = strings.Replace(kom, " ", "", -1)
+		kom = strings.Replace(kom, "/", "_", 1)
+		newName := kom + ".doc"
 		if newName == name {
 			continue
 		}
@@ -65,29 +66,11 @@ func main() {
 			continue
 		}
 		if err := os.Rename(name, newName); err != nil {
-				log.Printf("error renaming %v into %v: %v", name, newName, err)
-				continue
+			log.Printf("error renaming %v into %v: %v", name, newName, err)
+			continue
 		}
-	}		
-}
-
-func slurp(sc *bufio.Scanner) (string, error) {
-	i := 0
-	slurped := ""
-	for sc.Scan() {
-		if i == 3 {
-			break
-		}
-		slurped += sc.Text()
-		i++
 	}
-	if err := sc.Err(); err != nil {
-		return "", fmt.Errorf("could not slurp after marker: %v", err)
-	}
-	return slurped, nil
 }
-
-var komPattern = regexp.MustCompile(`([0-9]+\.[0-9]+\.[0-9]+(/|item)[0-9]+)`)
 
 func grep(filePath string, marker string) (string, error) {
 	f, err := os.Open(filePath)
@@ -96,24 +79,51 @@ func grep(filePath string, marker string) (string, error) {
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
-	sc.Split(bufio.ScanWords)
+	sc.Split(scanMSWordLines)
 	for sc.Scan() {
 		line := sc.Text()
-		if !strings.Contains(line, marker) {
+		markerPos := strings.Index(line, marker)
+		if markerPos < 0 {
 			continue
 		}
-		slurped, err := slurp(sc)
-		if err != nil {
-			return "", fmt.Errorf("could not slurp after marker: %v", err)
+		komPos := markerPos + len(marker)
+		if len(line) <= komPos {
+			return "", fmt.Errorf("line terminates with %q marker", marker)
 		}
-		if !komPattern.MatchString(slurped) {
-			return "", fmt.Errorf("could not find pattern after marker in %q", slurped)
-		}
-		return slurped, nil
+		return strings.TrimSpace(line[komPos:]), nil
 	}
 	if err := sc.Err(); err != nil {
 		return "", err
 	}
 
-	return "", fmt.Errorf("could not find marker %v in %v", marker, filePath)
+	return "", fmt.Errorf("could not find marker %q in %v", marker, filePath)
+}
+
+// dropCR drops a terminal \r from the data.
+func dropCR(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == '\r' {
+		return data[0 : len(data)-1]
+	}
+	return data
+}
+
+// scanMSWordLines is a split function for a Scanner that returns each line of
+// text, stripped of any trailing end-of-line marker. The returned line may
+// be empty. The end-of-line marker is one carriage return.
+// The last non-empty line of input will be returned even if it has no
+// newline.
+func scanMSWordLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\r'); i >= 0 {
+		// We have a full newline-terminated line.
+		return i + 1, dropCR(data[0:i]), nil
+	}
+	// If we're at EOF, we have a final, non-terminated line. Return it.
+	if atEOF {
+		return len(data), dropCR(data), nil
+	}
+	// Request more data.
+	return 0, nil, nil
 }
