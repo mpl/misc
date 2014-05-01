@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/mpl/gocron"
@@ -19,8 +20,6 @@ import (
 const configDir = "/home/mpl/.config/granivore/"
 
 // TODO(mpl): askAuth. meh. maybe listenAuth is enough.
-// TODO(mpl): fix cAuth lock.
-// TODO(mpl): see in fillconfig
 
 var (
 	emailFrom  = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
@@ -126,6 +125,8 @@ func checkFlags() {
 	}
 }
 
+var authOnce sync.Once
+
 func authHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "bad method", http.StatusBadRequest)
@@ -136,10 +137,18 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad method", http.StatusBadRequest)
 		return
 	}
+	okSent := false
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK\n"))
-	// TODO(mpl): ugh. will block after first one. use a once or something.
-	cAuth <- auth
+	authOnce.Do(func() {
+		w.Write([]byte("OK\n"))
+		cAuth <- auth
+		okSent = true
+		// TODO(mpl): quit listening after that?
+	})
+	if okSent {
+		return
+	}
+	w.Write([]byte("auth already done"))
 }
 
 var cAuth chan string
@@ -160,16 +169,6 @@ func main() {
 		}()
 		*auth = <-cAuth
 	}
-
-	if cleanup, err := fillConfig(); err != nil {
-		cleanup()
-		log.Fatal(err)
-	}
-	return
-
-//	else {
-//		defer cleanup()
-//	}
 
 	jobInterval := time.Duration(*interval) * time.Second
 	cron := gocron.Cron{
