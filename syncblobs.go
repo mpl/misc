@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"flag"
@@ -18,8 +19,6 @@ import (
 )
 
 const configDir = "/home/mpl/.config/granivore/"
-
-// TODO(mpl): askAuth. meh. maybe listenAuth is enough.
 
 var (
 	emailFrom  = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
@@ -168,6 +167,16 @@ func main() {
 			}
 		}()
 		*auth = <-cAuth
+	}
+
+	if *askAuth {
+		scanner := bufio.NewScanner(os.Stdin)
+		fmt.Print("Enter (unquoted) auth config string: ")
+		scanner.Scan()
+		*auth = scanner.Text()
+		if err := scanner.Err(); err != nil {
+			log.Fatalf("could not read auth string from stdin: %v", err)
+		}
 	}
 
 	jobInterval := time.Duration(*interval) * time.Second
