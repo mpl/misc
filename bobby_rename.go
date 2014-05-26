@@ -8,10 +8,11 @@ import (
 	"log"
 	"os"
 	"strings"
+	"unicode"
 )
 
 const (
-	marker  = "Kom.Nr"
+	marker  = "Kom"
 	logFile = "errors.log"
 )
 
@@ -52,7 +53,9 @@ func main() {
 		}
 		log.Printf("found kom number: %v", kom)
 		kom = strings.Replace(kom, " ", "", -1)
-		kom = strings.Replace(kom, "/", "_", 1)
+		kom = strings.Replace(kom, "=", "", -1)
+		kom = strings.Replace(kom, "/", "_", -1)
+		kom = strings.Replace(kom, ":", "-", -1)
 		newName := kom + ".doc"
 		if newName == name {
 			continue
@@ -86,9 +89,16 @@ func grep(filePath string, marker string) (string, error) {
 		if markerPos < 0 {
 			continue
 		}
-		komPos := markerPos + len(marker)
-		if len(line) <= komPos {
-			return "", fmt.Errorf("line terminates with %q marker", marker)
+		komPos := markerPos
+		for pos, r := range line[markerPos:] {
+			if unicode.IsDigit(r) {
+				komPos += pos
+				break
+			}
+		}
+		if komPos == markerPos {
+			log.Printf("could not find beginning of actual Kom number after %q marker", marker)
+			continue
 		}
 		return strings.TrimSpace(line[komPos:]), nil
 	}
