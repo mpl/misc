@@ -52,11 +52,11 @@ func main() {
 			continue
 		}
 		log.Printf("found kom number: %v", kom)
-		kom = strings.Replace(kom, " ", "", -1)
-		kom = strings.Replace(kom, "=", "", -1)
-		kom = strings.Replace(kom, "/", "_", -1)
-		kom = strings.Replace(kom, ":", "-", -1)
-		newName := kom + ".doc"
+		cleanKom := cleanup(kom)
+		if kom != cleanKom {
+			log.Printf("after name cleanup: %v", cleanKom)
+		}
+		newName := cleanKom + ".doc"
 		if newName == name {
 			continue
 		}
@@ -73,6 +73,21 @@ func main() {
 			continue
 		}
 	}
+}
+
+func cleanup(kom string) string {
+	kom = strings.Replace(kom, " ", "", -1)
+	if idx := strings.Index(kom, "=S/N"); idx != -1 {
+		if lastSlash := strings.LastIndex(kom[:idx], "/"); lastSlash == -1 {
+			log.Print(`could not find "/" before " = S/N"`)
+		} else {
+			kom = kom[:lastSlash]
+		}
+	}
+	kom = strings.Replace(kom, "=", "", -1)
+	kom = strings.Replace(kom, "/", "_", -1)
+	kom = strings.Replace(kom, ":", ".", -1)
+	return kom
 }
 
 func grep(filePath string, marker string) (string, error) {
