@@ -72,7 +72,9 @@ func scrape() error {
 			if *verbose {
 				log.Print("No new run")
 			}
-			return fmt.Errorf("No new run")
+			if *test {
+				return fmt.Errorf("No new run")
+			}
 			return nil
 		}
 		prevRunTime = latestRunTime
@@ -84,7 +86,9 @@ func scrape() error {
 		if *verbose {
 			log.Print("No fail at all")
 		}
-		return fmt.Errorf("No fail at all")
+		if *test {
+			return fmt.Errorf("No fail at all")
+		}
 		return nil
 	}
 
@@ -94,7 +98,9 @@ func scrape() error {
 		if *verbose {
 			log.Print("No recent fail")
 		}
-		return fmt.Errorf("No recent fail")
+		if *test {
+			return fmt.Errorf("No recent fail")
+		}
 		return nil
 	}
 
