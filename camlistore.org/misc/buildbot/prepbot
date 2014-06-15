@@ -1,24 +1,29 @@
 #!/home/mpl/plan9/bin/rc
 
-if (! test -f prepbot) {
-	echo 'prepbot should be run as ./prepbot'
+if (! ~ $#* 1) {
+	echo 'Usage: prepbot /path/to/camli/source/'
 	exit 1
 }
+camliroot=$1
+
 if (test -d $home/buildbot/) {
 	rm -rf $home/buildbot/
 }
 mkdir -p $home/buildbot/src
+
+cd $camliroot/misc/buildbot || exit 1
 cp master/master.go builder/builder.go README $home/buildbot/ || exit 1
-cd ../..
-camliroot=`{pwd}
+
 cd $home/buildbot/src || exit 1
 git clone $camliroot
 cd ..
 cp -a $home/gotip .
+
 if (test -d /tmp/camlibot-cache) {
 	rm -rf /tmp/camlibot-cache
 }
 mkdir -p /tmp/camlibot-cache
+
 cd /tmp/camlibot-cache || exit 1
 git clone $camliroot
 cp -a $home/gotip .
