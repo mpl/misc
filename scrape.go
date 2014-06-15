@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	emailFrom = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
-	notiPort  = flag.Int("port", 9688, "port for the local http server used for browser notifications")
+	emailFrom = flag.String("emailfrom", "", "alert sender email address")
+	notiPort  = flag.Int("port", 0, "port for the local http server used for browser notifications")
 	page      = flag.String("page", "", "page/address to scrape")
 	interval  = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
+	test      = flag.Bool("test", false, "Notify of everything, not just failures.")
 	verbose   = flag.Bool("v", false, "verbose")
 )
 
@@ -71,6 +72,7 @@ func scrape() error {
 			if *verbose {
 				log.Print("No new run")
 			}
+			return fmt.Errorf("No new run")
 			return nil
 		}
 		prevRunTime = latestRunTime
@@ -82,6 +84,7 @@ func scrape() error {
 		if *verbose {
 			log.Print("No fail at all")
 		}
+		return fmt.Errorf("No fail at all")
 		return nil
 	}
 
@@ -91,6 +94,7 @@ func scrape() error {
 		if *verbose {
 			log.Print("No recent fail")
 		}
+		return fmt.Errorf("No recent fail")
 		return nil
 	}
 
@@ -100,8 +104,14 @@ func scrape() error {
 
 func main() {
 	flag.Parse()
-	if *emailFrom == "" {
-		log.Fatal("Need emailfrom")
+	var mailAlert *gocron.MailAlert
+	if *emailFrom != "" {
+		mailAlert = &gocron.MailAlert{
+			Subject: "Scrape error",
+			To:      []string{"mpl@mpl.fr.eu.org"},
+			From:    *emailFrom,
+			SMTP:    "serenity:25",
+		}
 	}
 
 	if *interval < 0 {
@@ -111,12 +121,7 @@ func main() {
 	cron := gocron.Cron{
 		Interval: jobInterval,
 		Job:      scrape,
-		Mail: &gocron.MailAlert{
-			Subject: "Scrape error",
-			To:      []string{"mpl@mpl.fr.eu.org"},
-			From:    *emailFrom,
-			SMTP:    "serenity:25",
-		},
+		Mail:     mailAlert,
 		Notif: &gocron.Notification{
 			Host: fmt.Sprintf("localhost:%d", *notiPort),
 			Msg:  "Scrape error",
