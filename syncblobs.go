@@ -21,8 +21,8 @@ import (
 const configDir = "/home/mpl/.config/granivore/"
 
 var (
-	emailFrom  = flag.String("emailfrom", "mpl@oenone", "alert sender email address")
-	notiPort   = flag.Int("port", 9687, "port for the local http server used for browser notifications")
+	emailFrom  = flag.String("emailfrom", "", "alert sender email address")
+	notiPort   = flag.Int("port", 0, "port for the local http server used for browser notifications")
 	interval   = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
 	auth       = flag.String("auth", "", "Use this auth string instead of the one in the config file. Conflicts with -auth and -waitauth.")
 	askAuth    = flag.Bool("askauth", false, "Prompt for the auth string on stdin. Conflicts with -auth and -waitauth.")
@@ -113,9 +113,6 @@ func numSet(vv ...interface{}) (num int) {
 }
 
 func checkFlags() {
-	if *emailFrom == "" {
-		log.Fatal("Need emailfrom")
-	}
 	if *interval < 0 {
 		log.Fatal("negative duration? what does it meeaaaann!?")
 	}
@@ -179,16 +176,21 @@ func main() {
 		}
 	}
 
-	jobInterval := time.Duration(*interval) * time.Second
-	cron := gocron.Cron{
-		Interval: jobInterval,
-		Job:      syncBlobs,
-		Mail: &gocron.MailAlert{
+	var mailAlert *gocron.MailAlert
+	if *emailFrom != "" {
+		mailAlert = &gocron.MailAlert{
 			Subject: "Syncblobs error",
 			To:      []string{"mpl@mpl.fr.eu.org"},
 			From:    *emailFrom,
 			SMTP:    "serenity:25",
-		},
+		}
+	}
+
+	jobInterval := time.Duration(*interval) * time.Second
+	cron := gocron.Cron{
+		Interval: jobInterval,
+		Job:      syncBlobs,
+		Mail:     mailAlert,
 		Notif: &gocron.Notification{
 			Host: fmt.Sprintf("localhost:%d", *notiPort),
 			Msg:  "Syncblobs error",
