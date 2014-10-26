@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,9 +28,13 @@ var (
 	auth       = flag.String("auth", "", "Use this auth string instead of the one in the config file. Conflicts with -auth and -waitauth.")
 	askAuth    = flag.Bool("askauth", false, "Prompt for the auth string on stdin. Conflicts with -auth and -waitauth.")
 	listenAuth = flag.String("listenauth", "", "Listen on this address and wait for the auth string there. Conflicts with -auth and -askauth.")
+	debug      = flag.Bool("debug", false, "run only once, and not in a gocron")
 )
 
 func syncBlobs() error {
+	if err := testCreds(); err != nil {
+		return err
+	}
 	restoreConfig, err := fillConfig()
 	if err != nil {
 		restoreConfig()
@@ -41,10 +46,57 @@ func syncBlobs() error {
 	env := os.Environ()
 	env = append(env, "CAMLI_CONFIG_DIR="+configDir)
 	// TODO(mpl): -verbose to see output
-	// TODO(mpl): make it timeout or something in case of a 401. better yet, capture stderr,
-	// and die if see anything there.
 	cmd.Env = env
 	return cmd.Run()
+}
+
+func serverURL() (string, error) {
+	configFile := filepath.Join(configDir, "client-config.json")
+	f, err := os.Open(configFile)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	var server string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, `"server": `) {
+			line = strings.TrimSpace(line)
+			line = strings.Replace(line, `"server": "`, "", 1)
+			server = strings.Replace(line, `",`, "", 1)
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	if server == "" {
+		return "", errors.New("could not find server address in conf file")
+	}
+	if !strings.HasPrefix(server, "https://") {
+		return "", errors.New("refusing to send credentials with curl on non https")
+	}
+	return server, nil
+}
+
+func testCreds() error {
+	url, err := serverURL()
+	if err != nil {
+		return err
+	}
+	url = url + "/ui/"
+	userpass := strings.Replace(*auth, "userpass:", "", 1)
+	args := []string{"-u", userpass, url}
+	cmd := exec.Command("/usr/bin/curl", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	if bytes.Contains(out, []byte("<html><body><h1>Unauthorized</h1>")) {
+		return errors.New("Wrong credentials")
+	}
+	return nil
 }
 
 func fillConfig() (func() error, error) {
@@ -174,6 +226,13 @@ func main() {
 		if err := scanner.Err(); err != nil {
 			log.Fatalf("could not read auth string from stdin: %v", err)
 		}
+	}
+
+	if *debug {
+		if err := syncBlobs(); err != nil {
+			log.Fatal(err)
+		}
+		return
 	}
 
 	var mailAlert *gocron.MailAlert
