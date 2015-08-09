@@ -21,19 +21,121 @@ var (
 	emailFrom = flag.String("emailfrom", "mpl@serenity", "alert sender email address")
 	interval  = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
 	bin       = flag.String("binPath", "/home/mpl/gocode/bin/rtorrentrpc", "path to the rtorrentrpc binary to use.")
+	webDestPort = flag.String("webport", "8080", "port that will get all packets destined to port 80")
+	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
 )
 
 var (
 	currentBinding string
 	ipredIP        string
+	boundIP string
 	retryPause     = 1 * time.Second
 )
 
-func getBinding() ([]byte, error) {
+const tun = "tun100"
+const noTunMsg = tun +": error fetching interface information: Device not found"
+var noTunErr = errors.New(noTunMsg)
+var noRtorrentErr = errors.New("rtorrent not running")
+
+
+func getTunIP() (string, error) {
+	// TODO(mpl): can probably be done with the stdlib.
+	cmd, err := exec.Command("/sbin/ifconfig", tun)
+	if err != nil {
+		return "", err
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(out), noTunMsg) {
+			return "", noTunErr
+		}
+		return "", fmt.Errorf("%v: %v", err, string(out))
+	}
+	sc, err := bufio.Scanner()
+	if err != nil {
+		return "", err
+	}
+	for sc.Scan() {
+		l := sc.Text()
+		if !strings.HasPrefix(l, "inet addr:") {
+			continue
+		}
+		parts := strings.Fields(l)
+		if len(parts) != 3 {
+			return "", fmt.Errorf("wrong number of parts in inet addr line")
+		}
+		return strings.TrimSpace(strings.TrimPrefix(parts[0], "inet addr:")), nil
+	}
+}
+
+func runOrDie(cmd, args...) {
+	cmd, err := exec.Command(cmd, args...)
+	if err != nil {
+		// TODO(mpl): warn me
+		log.Fatal(err)
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil || string(out) != "" {
+		// TODO(mpl): warn me
+		log.Fatalf("%v: %v", err, string(out))
+	}	
+}
+	
+func main() {
+	for {
+		ip, err := getTunIP()
+		if err != nil {
+			if err != noTunErr {
+				// TODO(mpl): warn me
+				log.Fatal(err)
+			}
+			// TODO(mpl): restart openvpn, and loop back ?
+		}
+		if ip == ipredIP {
+			// TODO(mpl): maybe not, if we're here because last rtorrent reset failed.
+			time.Sleep(*interval)
+			continue
+		}
+		ipredIP = ip
+
+		// mark packets that should go through the tunnel
+		runOrDie(strings.Split("iptables -t nat -F", " ")...)
+		runOrDie(strings.Split("iptables -t mangle -F", " ")...)
+		runOrDie(strings.Split("iptables -t mangle -A OUTPUT --source "+ip+" -j MARK --set-mark 1", " ")...)
+		runOrDie(strings.Split("iptables -t nat -A POSTROUTING -o "+tun+" -j SNAT --to "+ip, " ")...)
+		runOrDie(strings.Split("iptables -t nat -A PREROUTING -i "+tun+" -j DNAT --to "+ip", " ")...)
+		runOrDie(strings.Split("ip route add default dev "+tun+" table 10", " ")...)
+		runOrDie(strings.Split("ip rule add fwmark 1 table 10", " ")...)
+		runOrDie(strings.Split("ip route flush cache", " ")...)
+
+		// restore website redirections
+		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
+		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
+
+		// TODO(mpl): option to skip restoring torrent binding
+
+
+	}
+}
+
+func getBoundIP() (string, error) {
 	args := []string{"localhost:5000", "get_bind"}
 	cmd := exec.Command(*bin, args...)
 	cmd.Env = os.Environ()
-	return cmd.Output()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if strings.HasSuffix(string(out), "connection refused") {
+			// it's ok, rtorrent not running
+			return "", noRtorrentErr
+		}
+		return "", err
+	}
+	ip := parseResponse(string(out))
+	if ip == "" {
+		// TODO(mpl): previous code suggests that could happen ? when rtorrent too busy mebbe ?
+		return "", fmt.Errorf("bound IP not found in output: %q", string(out))
+	}
+	return ip, nil
 }
 
 // TODO(mpl): do it with regexp
@@ -43,7 +145,7 @@ const (
 	endHint = "</string></value></param>"
 )
 
-func getIP(xml string) string {
+func parseResponse(xml string) string {
 	idx := strings.Index(xml, "<param><value><string>")
 	if idx <= 0 {
 		println("no beg pos")
@@ -66,11 +168,19 @@ func setBinding() ([]byte, error) {
 	return cmd.Output()
 }
 
-func checkBinding() error {
-	for {
-		println("looping")
-		time.Sleep(retryPause)
-		xml, err := getBinding()
+func resetBoundIP() error {
+	ip, err := getBoundIP()
+	if err != nil {
+		if err == noRtorrentErr {
+			println("rtorrent not running, that's ok")
+			return nil
+		}
+		return err
+	}
+	if ip == boundIP 
+
+
+	xml, err := getBinding()
 		println(string(xml))
 		if err != nil {
 			continue
