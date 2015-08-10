@@ -18,11 +18,11 @@ import (
 )
 
 var (
-	emailFrom = flag.String("emailfrom", "mpl@serenity", "alert sender email address")
 	interval  = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
 	resetRtorrent = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
 	webDestPort = flag.String("webport", "8080", "port that will get all packets destined to port 80")
 	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
+	verbose = flag.Bool("v", true, "be verbose")
 )
 
 const (
@@ -38,7 +38,16 @@ var (
 	rtorrentrpc = "rtorrentrpc"
 )
 
+func printf(format string, args ...interface{}) {
+//	log.Printf(format, args...)
+	// TODO(mpl): why the fuck can't I enable *verbose from the CLI ?
+	if *verbose {
+		log.Printf(format, args...)
+	}
+}
+
 func getTunIP() (string, error) {
+	printf("getting tun IP")
 	// TODO(mpl): can probably be done with the stdlib.
 	cmd := exec.Command("/sbin/ifconfig", tun)
 	out, err := cmd.CombinedOutput()
@@ -67,6 +76,7 @@ func getTunIP() (string, error) {
 }
 
 func runOrDie(args ...string) {
+	printf("running command: %v", args)
 	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 	if err != nil || string(out) != "" {
 		killVPN()
@@ -145,6 +155,7 @@ func setBoundIP(giveup time.Duration) error {
 }
 
 func resetBoundIP() error {
+	printf("resetting bound IP to %v", ipredIP)	
 	ip, err := getBoundIP()
 	if err != nil {
 		if err == noRtorrentErr {
@@ -168,10 +179,13 @@ func mainLoop() error {
 				// TODO(mpl): warn me
 				return err
 			}
-			// TODO(mpl): restart openvpn, and loop back ?
+			runOrDie(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
+			return nil
 		}
 		if ip == ipredIP {
+			printf("current tun IP == ipredIP (%v)", ipredIP)
 			if ip == boundIP {
+				printf("current tun IP == boundIP (%v). all good.", ipredIP)	
 				return nil
 			}
 			if err := resetBoundIP(); err != nil {
