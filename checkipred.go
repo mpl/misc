@@ -1,11 +1,11 @@
 package main
 
 import (
-	//	"bufio"
-	//	"bytes"
-	//	"errors"
+	"bufio"
+	"bytes"
+	"errors"
 	"flag"
-	//	"fmt"
+	"fmt"
 	//	"io/ioutil"
 	"log"
 	"os"
@@ -20,30 +20,27 @@ import (
 var (
 	emailFrom = flag.String("emailfrom", "mpl@serenity", "alert sender email address")
 	interval  = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
-	bin       = flag.String("binPath", "/home/mpl/gocode/bin/rtorrentrpc", "path to the rtorrentrpc binary to use.")
+	resetRtorrent = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
 	webDestPort = flag.String("webport", "8080", "port that will get all packets destined to port 80")
 	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
 )
 
-var (
-	currentBinding string
-	ipredIP        string
-	boundIP string
-	retryPause     = 1 * time.Second
+const (
+	tun = "tun100"
+	noTunMsg = tun +": error fetching interface information: Device not found"
 )
 
-const tun = "tun100"
-const noTunMsg = tun +": error fetching interface information: Device not found"
-var noTunErr = errors.New(noTunMsg)
-var noRtorrentErr = errors.New("rtorrent not running")
-
+var (
+	ipredIP        string
+	boundIP string
+	noTunErr = errors.New(noTunMsg)
+	noRtorrentErr = errors.New("rtorrent not running")
+	rtorrentrpc = "rtorrentrpc"
+)
 
 func getTunIP() (string, error) {
 	// TODO(mpl): can probably be done with the stdlib.
-	cmd, err := exec.Command("/sbin/ifconfig", tun)
-	if err != nil {
-		return "", err
-	}
+	cmd := exec.Command("/sbin/ifconfig", tun)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if strings.Contains(string(out), noTunMsg) {
@@ -51,7 +48,7 @@ func getTunIP() (string, error) {
 		}
 		return "", fmt.Errorf("%v: %v", err, string(out))
 	}
-	sc, err := bufio.Scanner()
+	sc := bufio.NewScanner(bytes.NewReader(out))
 	if err != nil {
 		return "", err
 	}
@@ -66,61 +63,22 @@ func getTunIP() (string, error) {
 		}
 		return strings.TrimSpace(strings.TrimPrefix(parts[0], "inet addr:")), nil
 	}
+	return "", errors.New("inet addr not found in ifconfig output")
 }
 
-func runOrDie(cmd, args...) {
-	cmd, err := exec.Command(cmd, args...)
-	if err != nil {
-		// TODO(mpl): warn me
-		log.Fatal(err)
-	}
-	out, err := cmd.CombinedOutput()
+func runOrDie(args ...string) {
+	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 	if err != nil || string(out) != "" {
-		// TODO(mpl): warn me
+		killVPN()
 		log.Fatalf("%v: %v", err, string(out))
 	}	
 }
-	
-func main() {
-	for {
-		ip, err := getTunIP()
-		if err != nil {
-			if err != noTunErr {
-				// TODO(mpl): warn me
-				log.Fatal(err)
-			}
-			// TODO(mpl): restart openvpn, and loop back ?
-		}
-		if ip == ipredIP {
-			// TODO(mpl): maybe not, if we're here because last rtorrent reset failed.
-			time.Sleep(*interval)
-			continue
-		}
-		ipredIP = ip
-
-		// mark packets that should go through the tunnel
-		runOrDie(strings.Split("iptables -t nat -F", " ")...)
-		runOrDie(strings.Split("iptables -t mangle -F", " ")...)
-		runOrDie(strings.Split("iptables -t mangle -A OUTPUT --source "+ip+" -j MARK --set-mark 1", " ")...)
-		runOrDie(strings.Split("iptables -t nat -A POSTROUTING -o "+tun+" -j SNAT --to "+ip, " ")...)
-		runOrDie(strings.Split("iptables -t nat -A PREROUTING -i "+tun+" -j DNAT --to "+ip", " ")...)
-		runOrDie(strings.Split("ip route add default dev "+tun+" table 10", " ")...)
-		runOrDie(strings.Split("ip rule add fwmark 1 table 10", " ")...)
-		runOrDie(strings.Split("ip route flush cache", " ")...)
-
-		// restore website redirections
-		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
-		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
-
-		// TODO(mpl): option to skip restoring torrent binding
-
-
-	}
-}
 
 func getBoundIP() (string, error) {
-	args := []string{"localhost:5000", "get_bind"}
-	cmd := exec.Command(*bin, args...)
+	if _, err := exec.LookPath(rtorrentrpc); err != nil {
+		return "", err
+	}
+	cmd := exec.Command(rtorrentrpc, "localhost:5000", "get_bind")
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -161,11 +119,29 @@ func parseResponse(xml string) string {
 	return xml[:idx]
 }
 
-func setBinding() ([]byte, error) {
+func setBoundIP(giveup time.Duration) error {
+	// TODO(mpl): use my lib xml-rpc instead of rtorrentrpc
+	// first make sure we have rtorrentrpc so we can return early if not
+	if _, err := exec.LookPath(rtorrentrpc); err != nil {
+		return err
+	}
 	args := []string{"localhost:5000", "set_bind", ipredIP}
-	cmd := exec.Command(*bin, args...)
-	cmd.Env = os.Environ()
-	return cmd.Output()
+	retryPause := 1 * time.Second
+	stop := time.Now().Add(giveup)
+	// TODO(mpl): use a time.Timer or whatever's efficient these days
+	for {
+		if time.Now().After(stop) {
+			return fmt.Errorf("giving up resetting bound IP after %v", giveup)
+		}
+		cmd := exec.Command(rtorrentrpc, args...)
+		out, err := cmd.CombinedOutput()
+		if err == nil && string(out) != "" {
+			boundIP = ipredIP
+			return nil
+		}
+		time.Sleep(retryPause)
+		retryPause = retryPause * 2
+	}
 }
 
 func resetBoundIP() error {
@@ -177,65 +153,85 @@ func resetBoundIP() error {
 		}
 		return err
 	}
-	if ip == boundIP 
+	if ip == ipredIP {
+		return nil
+	}
+	return setBoundIP(10*time.Minute)
+}
 
 
-	xml, err := getBinding()
-		println(string(xml))
+// because then I can have a defer to sleep
+func mainLoop() error {
+		ip, err := getTunIP()
 		if err != nil {
-			continue
+			if err != noTunErr {
+				// TODO(mpl): warn me
+				return err
+			}
+			// TODO(mpl): restart openvpn, and loop back ?
 		}
-		xmlString := string(xml)
-		if xmlString == "" {
-			continue
+		if ip == ipredIP {
+			if ip == boundIP {
+				return nil
+			}
+			if err := resetBoundIP(); err != nil {
+				return err
+			}			
 		}
-		currentBinding = getIP(xmlString)
-		if currentBinding == "" {
-			continue
-		}
-		println(currentBinding)
-		if currentBinding == ipredIP {
-			println("ALL GOOD")
+		ipredIP = ip
+
+		// mark packets that should go through the tunnel
+		runOrDie(strings.Fields("iptables -t nat -F")...)
+		runOrDie(strings.Fields("iptables -t mangle -F")...)
+		runOrDie(strings.Fields("iptables -t mangle -A OUTPUT --source "+ip+" -j MARK --set-mark 1")...)
+		runOrDie(strings.Fields("iptables -t nat -A POSTROUTING -o "+tun+" -j SNAT --to "+ip)...)
+		runOrDie(strings.Fields("iptables -t nat -A PREROUTING -i "+tun+" -j DNAT --to "+ip)...)
+		runOrDie(strings.Fields("ip route add default dev "+tun+" table 10")...)
+		runOrDie(strings.Fields("ip rule add fwmark 1 table 10")...)
+		runOrDie(strings.Fields("ip route flush cache")...)
+
+		// restore website redirections
+		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
+		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
+
+		if !*resetRtorrent {
 			return nil
 		}
-		for {
-			time.Sleep(retryPause)
-			xml, err := setBinding()
-			if err != nil {
-				continue
-			}
-			xmlString := string(xml)
-			if xmlString == "" {
-				continue
-			}
-			break
+		if err := resetBoundIP(); err != nil {
+			return err
 		}
-	}
 	return nil
 }
 
-func checkFlags() {
-	if *emailFrom == "" {
-		log.Fatal("Need emailfrom")
-	}
-	if *bin == "" {
-		log.Fatal("Need binPath")
-	}
-	if *interval < 0 {
-		log.Fatal("negative duration? what does it meeaaaann!?")
-	}
-	if len(flag.Args()) != 1 {
-		log.Fatal("need current ipred ip as argument")
+func killVPN() {
+	cmd := exec.Command("/usr/sbin/service", "openvpn", "stop", "ipredator")
+	var buff bytes.Buffer
+	cmd.Stderr = &buff
+	err := cmd.Run()
+	stderr := buff.String()
+	if err != nil || stderr != "" {
+		// TODO(mpl): warn me
+		log.Printf("could not stop vpn: %v: %v", err, stderr)
+	}	
+}
+
+func main() {
+	for {
+		if err := mainLoop(); err != nil {
+			killVPN()
+			log.Fatal(err)
+		}
+		time.Sleep(time.Duration(*interval) * time.Second)
 	}
 }
 
+	/*
 func main() {
 	flag.Parse()
 	checkFlags()
 	ipredIP = flag.Args()[0]
 	checkBinding()
 
-	/*
 		jobInterval := time.Duration(*interval) * time.Second
 		cron := gocron.Cron{
 			Interval: jobInterval,
@@ -256,5 +252,5 @@ func main() {
 			},
 		}
 		cron.Run()
-	*/
 }
+	*/
