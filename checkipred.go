@@ -18,28 +18,28 @@ import (
 )
 
 var (
-	interval  = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
-	resetRtorrent = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
-	webDestPort = flag.String("webport", "8080", "port that will get all packets destined to port 80")
+	interval       = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
+	resetRtorrent  = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
+	webDestPort    = flag.String("webport", "8080", "port that will get all packets destined to port 80")
 	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
-	verbose = flag.Bool("v", true, "be verbose")
+	verbose        = flag.Bool("v", true, "be verbose")
 )
 
 const (
-	tun = "tun100"
-	noTunMsg = tun +": error fetching interface information: Device not found"
+	tun      = "tun100"
+	noTunMsg = tun + ": error fetching interface information: Device not found"
 )
 
 var (
-	ipredIP        string
-	boundIP string
-	noTunErr = errors.New(noTunMsg)
+	ipredIP       string
+	boundIP       string
+	noTunErr      = errors.New(noTunMsg)
 	noRtorrentErr = errors.New("rtorrent not running")
-	rtorrentrpc = "rtorrentrpc"
+	rtorrentrpc   = "rtorrentrpc"
 )
 
 func printf(format string, args ...interface{}) {
-//	log.Printf(format, args...)
+	//	log.Printf(format, args...)
 	// TODO(mpl): why the fuck can't I enable *verbose from the CLI ?
 	if *verbose {
 		log.Printf(format, args...)
@@ -81,7 +81,7 @@ func runOrDie(args ...string) {
 	if err != nil || string(out) != "" {
 		killVPN()
 		log.Fatalf("%v: %v", err, string(out))
-	}	
+	}
 }
 
 func getBoundIP() (string, error) {
@@ -155,7 +155,7 @@ func setBoundIP(giveup time.Duration) error {
 }
 
 func resetBoundIP() error {
-	printf("resetting bound IP to %v", ipredIP)	
+	printf("resetting bound IP to %v", ipredIP)
 	ip, err := getBoundIP()
 	if err != nil {
 		if err == noRtorrentErr {
@@ -167,53 +167,53 @@ func resetBoundIP() error {
 	if ip == ipredIP {
 		return nil
 	}
-	return setBoundIP(10*time.Minute)
+	return setBoundIP(10 * time.Minute)
 }
-
 
 // because then I can have a defer to sleep
 func mainLoop() error {
-		ip, err := getTunIP()
-		if err != nil {
-			if err != noTunErr {
-				// TODO(mpl): warn me
-				return err
-			}
-			runOrDie(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
-			return nil
-		}
-		if ip == ipredIP {
-			printf("current tun IP == ipredIP (%v)", ipredIP)
-			if ip == boundIP {
-				printf("current tun IP == boundIP (%v). all good.", ipredIP)	
-				return nil
-			}
-			if err := resetBoundIP(); err != nil {
-				return err
-			}			
-		}
-		ipredIP = ip
-
-		// mark packets that should go through the tunnel
-		runOrDie(strings.Fields("iptables -t nat -F")...)
-		runOrDie(strings.Fields("iptables -t mangle -F")...)
-		runOrDie(strings.Fields("iptables -t mangle -A OUTPUT --source "+ip+" -j MARK --set-mark 1")...)
-		runOrDie(strings.Fields("iptables -t nat -A POSTROUTING -o "+tun+" -j SNAT --to "+ip)...)
-		runOrDie(strings.Fields("iptables -t nat -A PREROUTING -i "+tun+" -j DNAT --to "+ip)...)
-		runOrDie(strings.Fields("ip route add default dev "+tun+" table 10")...)
-		runOrDie(strings.Fields("ip rule add fwmark 1 table 10")...)
-		runOrDie(strings.Fields("ip route flush cache")...)
-
-		// restore website redirections
-		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
-		runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
-
-		if !*resetRtorrent {
-			return nil
-		}
-		if err := resetBoundIP(); err != nil {
+	ip, err := getTunIP()
+	if err != nil {
+		if err != noTunErr {
+			// TODO(mpl): warn me
 			return err
 		}
+		// TODO(mpl): maybe not die for that one ?
+		runOrDie(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
+		time.Sleep(10*time.Second)
+	}
+
+	if ip == ipredIP {
+		printf("current tun IP == ipredIP (%v)", ipredIP)
+		return nil
+	}
+
+	// mark packets that should go through the tunnel
+	runOrDie(strings.Fields("iptables -t nat -F")...)
+	runOrDie(strings.Fields("iptables -t mangle -F")...)
+	runOrDie(strings.Fields("iptables -t mangle -A OUTPUT --source " + ip + " -j MARK --set-mark 1")...)
+	runOrDie(strings.Fields("iptables -t nat -A POSTROUTING -o " + tun + " -j SNAT --to " + ip)...)
+	runOrDie(strings.Fields("iptables -t nat -A PREROUTING -i " + tun + " -j DNAT --to " + ip)...)
+	runOrDie(strings.Fields("ip route add default dev " + tun + " table 10")...)
+	runOrDie(strings.Fields("ip rule add fwmark 1 table 10")...)
+	runOrDie(strings.Fields("ip route flush cache")...)
+
+	// restore website redirections
+	runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
+	runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
+
+	ipredIP = ip
+	if !*resetRtorrent {
+		return nil
+	}
+
+	if ip == boundIP {
+		printf("current tun IP == boundIP (%v). all good.", ipredIP)
+		return nil
+	}
+	if err := resetBoundIP(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -226,7 +226,7 @@ func killVPN() {
 	if err != nil || stderr != "" {
 		// TODO(mpl): warn me
 		log.Printf("could not stop vpn: %v: %v", err, stderr)
-	}	
+	}
 }
 
 func main() {
@@ -239,7 +239,7 @@ func main() {
 	}
 }
 
-	/*
+/*
 func main() {
 	flag.Parse()
 	checkFlags()
@@ -267,4 +267,4 @@ func main() {
 		}
 		cron.Run()
 }
-	*/
+*/
