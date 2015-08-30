@@ -170,24 +170,8 @@ func resetBoundIP() error {
 	return setBoundIP(10 * time.Minute)
 }
 
-// because then I can have a defer to sleep
-func mainLoop() error {
-	ip, err := getTunIP()
-	if err != nil {
-		if err != noTunErr {
-			// TODO(mpl): warn me
-			return err
-		}
-		// TODO(mpl): maybe not die for that one ?
-		runOrDie(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
-		time.Sleep(10*time.Second)
-	}
-
-	if ip == ipredIP {
-		printf("current tun IP == ipredIP (%v)", ipredIP)
-		return nil
-	}
-
+func setRouting(ip string) {
+	printf("updating routing with %v", ip)
 	// mark packets that should go through the tunnel
 	runOrDie(strings.Fields("iptables -t nat -F")...)
 	runOrDie(strings.Fields("iptables -t mangle -F")...)
@@ -201,19 +185,48 @@ func mainLoop() error {
 	// restore website redirections
 	runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
 	runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
+}
 
+func mainLoop() error {
+	ip, err := getTunIP()
+	if err != nil {
+		if err != noTunErr {
+			// TODO(mpl): warn me
+			return err
+		}
+		// TODO(mpl): maybe not die for that one ?
+		runOrDie(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
+		time.Sleep(10 * time.Second)
+	}
+
+	if ipredIP == ip && boundIP == ip {
+		printf("All good with %v, nothing to do.", ip)
+		return nil
+	}
+
+	if ipredIP == ip {
+		if !*resetRtorrent {
+			return nil
+		}
+		// vpn already set up properly, but boundIP is outdated
+		printf("routing ok, but bound IP (%v) needs updating to %v", boundIP, ip)
+		if err := resetBoundIP(); err != nil {
+			printf("%v", err)
+		}
+		return nil
+	}
+
+	setRouting(ip)
 	ipredIP = ip
+
 	if !*resetRtorrent {
 		return nil
 	}
-
-	if ip == boundIP {
-		printf("current tun IP == boundIP (%v). all good.", ipredIP)
-		return nil
-	}
+	printf("bound IP (%v) needs updating to %v", boundIP, ip)
 	if err := resetBoundIP(); err != nil {
-		return err
+		printf("%v", err)
 	}
+
 	return nil
 }
 
