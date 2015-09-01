@@ -75,6 +75,18 @@ func getTunIP() (string, error) {
 	return "", errors.New("inet addr not found in ifconfig output")
 }
 
+func run(args ...string) {
+	printf("running command: %v", args)
+	cmd := exec.Command(args[0], args[1:]...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil || stderr.Len() != 0 {
+		killVPN()
+		log.Fatalf("%v: %v", err, stderr.String())
+	}
+}
+
 func runOrDie(args ...string) {
 	printf("running command: %v", args)
 	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
@@ -188,46 +200,58 @@ func setRouting(ip string) {
 }
 
 func mainLoop() error {
-	ip, err := getTunIP()
-	if err != nil {
-		if err != noTunErr {
-			// TODO(mpl): warn me
-			return err
+	for {
+		ip, err := getTunIP()
+		if err != nil {
+			if err != noTunErr {
+				// TODO(mpl): warn me
+				return err
+			}
+			run(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
+			time.Sleep(10 * time.Second)
+			continue
 		}
-		// TODO(mpl): maybe not die for that one ?
-		runOrDie(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
-		time.Sleep(10 * time.Second)
-	}
 
-	if ipredIP == ip && boundIP == ip {
-		printf("All good with %v, nothing to do.", ip)
-		return nil
-	}
-
-	if ipredIP == ip {
-		if !*resetRtorrent {
-			return nil
+		println("IP: " + ip)
+		if ipredIP == ip && boundIP == ip {
+			printf("All good with %v, nothing to do.", ip)
+			//		return nil
+			time.Sleep(time.Duration(*interval) * time.Second)
+			continue
 		}
-		// vpn already set up properly, but boundIP is outdated
-		printf("routing ok, but bound IP (%v) needs updating to %v", boundIP, ip)
-		if err := resetBoundIP(); err != nil {
-			printf("%v", err)
+
+		if ipredIP == ip {
+			if !*resetRtorrent {
+//				return nil
+				time.Sleep(time.Duration(*interval) * time.Second)
+				continue
+			}
+			// vpn already set up properly, but boundIP is outdated
+			printf("routing ok, but bound IP (%v) needs updating to %v", boundIP, ip)
+			if err := resetBoundIP(); err != nil {
+				printf("%v", err)
+			}
+			//		return nil
+			time.Sleep(time.Duration(*interval) * time.Second)
+			continue
 		}
-		return nil
-	}
 
-	setRouting(ip)
-	ipredIP = ip
+		setRouting(ip)
+		ipredIP = ip
 
-	if !*resetRtorrent {
-		return nil
-	}
-	printf("bound IP (%v) needs updating to %v", boundIP, ip)
-	if err := resetBoundIP(); err != nil {
-		printf("%v", err)
-	}
+		/*
+			if !*resetRtorrent {
+				return nil
+			}
+			printf("bound IP (%v) needs updating to %v", boundIP, ip)
+			if err := resetBoundIP(); err != nil {
+				printf("%v", err)
+			}
+		*/
 
-	return nil
+//		return nil
+		time.Sleep(time.Duration(*interval) * time.Second)
+	}
 }
 
 func killVPN() {
@@ -243,12 +267,19 @@ func killVPN() {
 }
 
 func main() {
-	for {
-		if err := mainLoop(); err != nil {
-			killVPN()
-			log.Fatal(err)
+	// TODO(mpl): refactor the loop out of mainLoop later.
+	/*
+		for {
+			if err := mainLoop(); err != nil {
+				killVPN()
+				log.Fatal(err)
+			}
+			time.Sleep(time.Duration(*interval) * time.Second)
 		}
-		time.Sleep(time.Duration(*interval) * time.Second)
+	*/
+	if err := mainLoop(); err != nil {
+		killVPN()
+		log.Fatal(err)
 	}
 }
 
