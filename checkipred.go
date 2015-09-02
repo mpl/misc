@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	interval       = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
+//	interval       = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
+	interval       = flag.Int("interval", 10, "Interval between runs, in seconds. use 0 to run only once.")
 	resetRtorrent  = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
 	webDestPort    = flag.String("webport", "8080", "port that will get all packets destined to port 80")
 	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
@@ -62,15 +63,16 @@ func getTunIP() (string, error) {
 		return "", err
 	}
 	for sc.Scan() {
-		l := sc.Text()
+		l := strings.TrimSpace(sc.Text())
+		println(l)
 		if !strings.HasPrefix(l, "inet addr:") {
 			continue
 		}
 		parts := strings.Fields(l)
-		if len(parts) != 3 {
+		if len(parts) != 4 {
 			return "", fmt.Errorf("wrong number of parts in inet addr line")
 		}
-		return strings.TrimSpace(strings.TrimPrefix(parts[0], "inet addr:")), nil
+		return strings.TrimSpace(strings.TrimPrefix(parts[1], "addr:")), nil
 	}
 	return "", errors.New("inet addr not found in ifconfig output")
 }
@@ -82,7 +84,7 @@ func run(args ...string) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil || stderr.Len() != 0 {
-		killVPN()
+//		killVPN()
 		log.Fatalf("%v: %v", err, stderr.String())
 	}
 }
@@ -104,11 +106,13 @@ func getBoundIP() (string, error) {
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if strings.HasSuffix(string(out), "connection refused") {
+		println("rtorrentrpc error with: " + string(out))
+		if strings.HasSuffix(strings.TrimSpace(string(out)), "connection refused") {
+			println("OK, RTORRENT NOT RUNNING")
 			// it's ok, rtorrent not running
 			return "", noRtorrentErr
 		}
-		return "", err
+		return "", fmt.Errorf("rtorrentrpc error: %v, %v", err, string(out))
 	}
 	ip := parseResponse(string(out))
 	if ip == "" {
@@ -278,7 +282,7 @@ func main() {
 		}
 	*/
 	if err := mainLoop(); err != nil {
-		killVPN()
+//		killVPN()
 		log.Fatal(err)
 	}
 }
