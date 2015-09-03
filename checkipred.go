@@ -98,28 +98,43 @@ func runOrDie(args ...string) {
 	}
 }
 
-func getBoundIP() (string, error) {
+func getBoundIP(giveup time.Duration) (string, error) {
 	if _, err := exec.LookPath(rtorrentrpc); err != nil {
 		return "", err
 	}
-	cmd := exec.Command(rtorrentrpc, "localhost:5000", "get_bind")
-	cmd.Env = os.Environ()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		println("rtorrentrpc error with: " + string(out))
-		if strings.HasSuffix(strings.TrimSpace(string(out)), "connection refused") {
+	args := string["localhost:5000", "get_bind"]
+	retryPause := 1 * time.Second
+	stop := time.Now().Add(giveup)
+	// TODO(mpl): use a time.Timer or whatever's efficient these days
+	var lastErr error
+	for {
+		if time.Now().After(stop) {
+			return "", fmt.Errorf("giving up getting bound IP after %v", giveup)
+		}
+		cmd := exec.Command(rtorrentrpc, args...)
+		cmd.Env = os.Environ()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			println("rtorrentrpc error with: " + string(out))
+			if !strings.HasSuffix(strings.TrimSpace(string(out)), "connection refused") {
+				time.Sleep(retryPause)
+				retryPause = retryPause * 2
+				lastErr = fmt.Errorf("rtorrentrpc error: %v, %v", err, string(out))
+				continue
+			}
 			println("OK, RTORRENT NOT RUNNING")
 			// it's ok, rtorrent not running
 			return "", noRtorrentErr
 		}
-		return "", fmt.Errorf("rtorrentrpc error: %v, %v", err, string(out))
+		ip := parseResponse(string(out))
+		if ip == "" {
+			time.Sleep(retryPause)
+			retryPause = retryPause * 2
+			lastErr = fmt.Errorf("bound IP not found in output: %q", string(out))
+			continue
+		}
+		return ip, nil
 	}
-	ip := parseResponse(string(out))
-	if ip == "" {
-		// TODO(mpl): previous code suggests that could happen ? when rtorrent too busy mebbe ?
-		return "", fmt.Errorf("bound IP not found in output: %q", string(out))
-	}
-	return ip, nil
 }
 
 // TODO(mpl): do it with regexp
@@ -145,13 +160,13 @@ func parseResponse(xml string) string {
 	return xml[:idx]
 }
 
-func setBoundIP(giveup time.Duration) error {
+func setBoundIP(newIP string, giveup time.Duration) error {
 	// TODO(mpl): use my lib xml-rpc instead of rtorrentrpc
 	// first make sure we have rtorrentrpc so we can return early if not
 	if _, err := exec.LookPath(rtorrentrpc); err != nil {
 		return err
 	}
-	args := []string{"localhost:5000", "set_bind", ipredIP}
+	args := []string{"localhost:5000", "set_bind", newIP}
 	retryPause := 1 * time.Second
 	stop := time.Now().Add(giveup)
 	// TODO(mpl): use a time.Timer or whatever's efficient these days
@@ -162,7 +177,8 @@ func setBoundIP(giveup time.Duration) error {
 		cmd := exec.Command(rtorrentrpc, args...)
 		out, err := cmd.CombinedOutput()
 		if err == nil && string(out) != "" {
-			boundIP = ipredIP
+// TODO(mpl): remove if stateless
+			boundIP = newIP
 			return nil
 		}
 		time.Sleep(retryPause)
@@ -170,8 +186,7 @@ func setBoundIP(giveup time.Duration) error {
 	}
 }
 
-func resetBoundIP() error {
-	printf("resetting bound IP to %v", ipredIP)
+func resetBoundIP(newIP string) error {
 	ip, err := getBoundIP()
 	if err != nil {
 		if err == noRtorrentErr {
@@ -180,10 +195,11 @@ func resetBoundIP() error {
 		}
 		return err
 	}
-	if ip == ipredIP {
+	if ip == newIP {
 		return nil
 	}
-	return setBoundIP(10 * time.Minute)
+	printf("resetting bound IP to %v", newIP)
+	return setBoundIP(newIP, 10 * time.Minute)
 }
 
 func setRouting(ip string) {
@@ -281,9 +297,15 @@ func main() {
 			time.Sleep(time.Duration(*interval) * time.Second)
 		}
 	*/
-	if err := mainLoop(); err != nil {
-//		killVPN()
-		log.Fatal(err)
+	// We could remove that loop and use cron instead BUT, I don't want risking cron starting an instance while a previous one is still running, hence why we control it from here.
+	for {
+		if err := mainLoop(); err != nil {
+//			killVPN()
+			log.Fatal(err)
+		}
+		if *interval <= 0 {
+			return
+		}
 	}
 }
 
