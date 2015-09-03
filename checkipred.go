@@ -220,7 +220,6 @@ func setRouting(ip string) {
 }
 
 func mainLoop() error {
-	for {
 		ip, err := getTunIP()
 		if err != nil {
 			if err != noTunErr {
@@ -229,8 +228,18 @@ func mainLoop() error {
 			}
 			run(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
 			time.Sleep(10 * time.Second)
-			continue
 		}
+
+		// TODO(mpl): if ip route show table 10 == no output -> setRouting needed
+
+			if !*resetRtorrent {
+				return nil
+			}
+
+			if err := resetBoundIP(); err != nil {
+				return err
+			}
+
 
 		println("IP: " + ip)
 		if ipredIP == ip && boundIP == ip {
@@ -271,7 +280,6 @@ func mainLoop() error {
 
 //		return nil
 		time.Sleep(time.Duration(*interval) * time.Second)
-	}
 }
 
 func killVPN() {
