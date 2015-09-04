@@ -85,7 +85,7 @@ func stringCmd(cmd string) *exec.Cmd {
 	return exec.Command(fields[0], fields[1:]...)
 }
 
-func run(args ...string) {
+func run(args ...string) error {
 	printf("running command: %v", args)
 	cmd := exec.Command(args[0], args[1:]...)
 	var stderr bytes.Buffer
@@ -93,17 +93,21 @@ func run(args ...string) {
 	err := cmd.Run()
 	if err != nil || stderr.Len() != 0 {
 		//		killVPN()
+		return fmt.Errorf("%v: %v", err, stderr.String())
 		log.Fatalf("%v: %v", err, stderr.String())
 	}
+	return nil
 }
 
-func runOrDie(args ...string) {
+func runOrDie(args ...string) error {
 	printf("running command: %v", args)
 	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 	if err != nil || string(out) != "" {
+		// TODO(mpl): shouldn't be necessary, but just in case
 		killVPN()
-		log.Fatalf("%v: %v", err, string(out))
+		return fmt.Errorf("%v: %v", err, string(out))
 	}
+	return nil
 }
 
 func getBoundIP(giveup time.Duration) (string, error) {
@@ -226,22 +230,31 @@ func isRouting(ip string) bool {
 	return true
 }
 
-func setRouting(ip string) {
+func setRouting(ip string) error {
 	printf("updating routing with %v", ip)
+	var stickyErr error
+	checkErr := func(args string) {
+		if stickyErr != nil {
+			printf("fallthrough because stickyErr")
+			return
+		}
+		stickyErr = runOrDie(strings.Fields(args)...)
+	}
+	// TODO(mpl): mv runOrDie impl into checkErr ?
 	// mark packets that should go through the tunnel
-	runOrDie(strings.Fields("iptables -t nat -F")...)
-	runOrDie(strings.Fields("iptables -t mangle -F")...)
-	runOrDie(strings.Fields("iptables -t mangle -A OUTPUT --source " + ip + " -j MARK --set-mark 1")...)
-	runOrDie(strings.Fields("iptables -t nat -A POSTROUTING -o " + tun + " -j SNAT --to " + ip)...)
-	runOrDie(strings.Fields("iptables -t nat -A PREROUTING -i " + tun + " -j DNAT --to " + ip)...)
-	// TODO(mpl): is the one below going to pose a problem when openvpn simply gave us a new IP ? does that erase the route ?
-	runOrDie(strings.Fields("ip route add default dev " + tun + " table 10")...)
-	runOrDie(strings.Fields("ip rule add fwmark 1 table 10")...)
-	runOrDie(strings.Fields("ip route flush cache")...)
+	checkErr("iptables -t nat -F")
+	checkErr("iptables -t mangle -F")
+	checkErr("iptables -t mangle -A OUTPUT --source " + ip + " -j MARK --set-mark 1")
+	checkErr("iptables -t nat -A POSTROUTING -o " + tun + " -j SNAT --to " + ip)
+	checkErr("iptables -t nat -A PREROUTING -i " + tun + " -j DNAT --to " + ip)
+	checkErr("ip route add default dev " + tun + " table 10")
+	checkErr("ip rule add fwmark 1 table 10")
+	checkErr("ip route flush cache")
 
 	// restore website redirections
-	runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port "+*webDestPort, " ")...)
-	runOrDie(strings.Split("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port "+*webDestPortTLS, " ")...)
+	checkErr("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port " + *webDestPort)
+	checkErr("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port " + *webDestPortTLS)
+	return stickyErr
 }
 
 func mainLoop() error {
@@ -251,7 +264,9 @@ func mainLoop() error {
 			// TODO(mpl): warn me
 			return err
 		}
-		run(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
+		if err := run(strings.Fields("/usr/sbin/service openvpn start ipredator")...); err != nil {
+			return err
+		}
 		time.Sleep(10 * time.Second)
 		ip, err = getTunIP()
 		if err != nil {
@@ -260,7 +275,9 @@ func mainLoop() error {
 	}
 
 	if !isRouting(ip) {
-		setRouting(ip)
+		if err := setRouting(ip); err != nil {
+			return err
+		}
 	}
 
 	if *host != "" {
@@ -294,8 +311,7 @@ func main() {
 	// We could remove that loop and use cron instead BUT, I don't want risking cron starting an instance while a previous one is still running, hence why we control it from here.
 	for {
 		if err := mainLoop(); err != nil {
-			//			killVPN()
-			log.Fatal(err)
+			killVPN()
 		}
 		if *interval <= 0 {
 			return
