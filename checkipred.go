@@ -29,14 +29,14 @@ var (
 const (
 	tun      = "tun100"
 	noTunMsg = tun + ": error fetching interface information: Device not found"
+	isRoutingHint = "default dev " + tun + "  scope link"
 )
 
 var (
-	ipredIP       string
-	boundIP       string
 	noTunErr      = errors.New(noTunMsg)
 	noRtorrentErr = errors.New("rtorrent not running")
 	rtorrentrpc   = "rtorrentrpc"
+	giveup = 10 * time.Minute
 )
 
 func printf(format string, args ...interface{}) {
@@ -102,14 +102,14 @@ func getBoundIP(giveup time.Duration) (string, error) {
 	if _, err := exec.LookPath(rtorrentrpc); err != nil {
 		return "", err
 	}
-	args := string["localhost:5000", "get_bind"]
+	args := []string{"localhost:5000", "get_bind"}
 	retryPause := 1 * time.Second
 	stop := time.Now().Add(giveup)
 	// TODO(mpl): use a time.Timer or whatever's efficient these days
 	var lastErr error
 	for {
 		if time.Now().After(stop) {
-			return "", fmt.Errorf("giving up getting bound IP after %v", giveup)
+			return "", fmt.Errorf("giving up getting bound IP after %v: %v", giveup, lastErr)
 		}
 		cmd := exec.Command(rtorrentrpc, args...)
 		cmd.Env = os.Environ()
@@ -178,7 +178,7 @@ func setBoundIP(newIP string, giveup time.Duration) error {
 		out, err := cmd.CombinedOutput()
 		if err == nil && string(out) != "" {
 // TODO(mpl): remove if stateless
-			boundIP = newIP
+//			boundIP = newIP
 			return nil
 		}
 		time.Sleep(retryPause)
@@ -187,7 +187,7 @@ func setBoundIP(newIP string, giveup time.Duration) error {
 }
 
 func resetBoundIP(newIP string) error {
-	ip, err := getBoundIP()
+	ip, err := getBoundIP(giveup)
 	if err != nil {
 		if err == noRtorrentErr {
 			println("rtorrent not running, that's ok")
@@ -199,7 +199,16 @@ func resetBoundIP(newIP string) error {
 		return nil
 	}
 	printf("resetting bound IP to %v", newIP)
-	return setBoundIP(newIP, 10 * time.Minute)
+	return setBoundIP(newIP, giveup)
+}
+
+func isRouting() bool {
+	out, err := exec.Command("ip", "route", "show", "table", "10").CombinedOutput()
+	if err != nil {
+		println("ERROR WITH ISROUTING")
+		println(string(out))
+	}
+	return (err == nil && strings.TrimSpace(string(out)) == isRoutingHint)
 }
 
 func setRouting(ip string) {
@@ -228,58 +237,24 @@ func mainLoop() error {
 			}
 			run(strings.Fields("/usr/sbin/service openvpn start ipredator")...)
 			time.Sleep(10 * time.Second)
-		}
-
-		// TODO(mpl): if ip route show table 10 == no output -> setRouting needed
-
-			if !*resetRtorrent {
-				return nil
-			}
-
-			if err := resetBoundIP(); err != nil {
+			ip, err = getTunIP()
+			if err != nil {
 				return err
 			}
-
-
-		println("IP: " + ip)
-		if ipredIP == ip && boundIP == ip {
-			printf("All good with %v, nothing to do.", ip)
-			//		return nil
-			time.Sleep(time.Duration(*interval) * time.Second)
-			continue
 		}
 
-		if ipredIP == ip {
-			if !*resetRtorrent {
-//				return nil
-				time.Sleep(time.Duration(*interval) * time.Second)
-				continue
-			}
-			// vpn already set up properly, but boundIP is outdated
-			printf("routing ok, but bound IP (%v) needs updating to %v", boundIP, ip)
-			if err := resetBoundIP(); err != nil {
-				printf("%v", err)
-			}
-			//		return nil
-			time.Sleep(time.Duration(*interval) * time.Second)
-			continue
+		if !isRouting() {
+			// TODO(mpl): even if I find bug in isRouting, is that good enough?
+			// Are still things good if vpn was restarted in the meantime ?
+			setRouting(ip)
 		}
 
-		setRouting(ip)
-		ipredIP = ip
+		// WIP: investigate rtorrentrpc error with: 2015/09/04 02:11:01 EOF
 
-		/*
-			if !*resetRtorrent {
-				return nil
-			}
-			printf("bound IP (%v) needs updating to %v", boundIP, ip)
-			if err := resetBoundIP(); err != nil {
-				printf("%v", err)
-			}
-		*/
-
-//		return nil
-		time.Sleep(time.Duration(*interval) * time.Second)
+		if !*resetRtorrent {
+			return nil
+		}
+		return resetBoundIP(ip)
 }
 
 func killVPN() {
@@ -295,16 +270,6 @@ func killVPN() {
 }
 
 func main() {
-	// TODO(mpl): refactor the loop out of mainLoop later.
-	/*
-		for {
-			if err := mainLoop(); err != nil {
-				killVPN()
-				log.Fatal(err)
-			}
-			time.Sleep(time.Duration(*interval) * time.Second)
-		}
-	*/
 	// We could remove that loop and use cron instead BUT, I don't want risking cron starting an instance while a previous one is still running, hence why we control it from here.
 	for {
 		if err := mainLoop(); err != nil {
@@ -314,6 +279,7 @@ func main() {
 		if *interval <= 0 {
 			return
 		}
+		time.Sleep(time.Duration(*interval) * time.Second)
 	}
 }
 
