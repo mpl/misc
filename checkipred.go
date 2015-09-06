@@ -311,6 +311,7 @@ func main() {
 	// We could remove that loop and use cron instead BUT, I don't want risking cron starting an instance while a previous one is still running, hence why we control it from here.
 	for {
 		if err := mainLoop(); err != nil {
+			printf("%v", err)
 			killVPN()
 		}
 		if *interval <= 0 {
