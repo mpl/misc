@@ -6,16 +6,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	//	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
-	//	"path/filepath"
 	"strings"
 	"time"
-
-	//	"github.com/mpl/gocron"
 )
 
 var (
@@ -25,6 +22,7 @@ var (
 	webDestPort    = flag.String("webport", "8080", "port that will get all packets destined to port 80")
 	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
 	host           = flag.String("host", "", "host to check to see if routing is all good")
+	logfile        = flag.String("logfile", "", "write there in addition to stdout/stderr")
 	verbose        = flag.Bool("v", true, "be verbose")
 )
 
@@ -42,9 +40,6 @@ var (
 )
 
 func printf(format string, args ...interface{}) {
-	//	log.Printf(format, args...)
-	// TODO(mpl): why the fuck can't I enable *verbose from the CLI ?
-	// LOL BECAUSE NO FLAG.PARSE ?
 	if *verbose {
 		log.Printf(format, args...)
 	}
@@ -67,7 +62,6 @@ func getTunIP() (string, error) {
 	}
 	for sc.Scan() {
 		l := strings.TrimSpace(sc.Text())
-		println(l)
 		if !strings.HasPrefix(l, "inet addr:") {
 			continue
 		}
@@ -94,17 +88,14 @@ func run(args ...string) error {
 	if err != nil || stderr.Len() != 0 {
 		//		killVPN()
 		return fmt.Errorf("%v: %v", err, stderr.String())
-		log.Fatalf("%v: %v", err, stderr.String())
 	}
 	return nil
 }
 
-func runOrDie(args ...string) error {
+func runNoOutput(args ...string) error {
 	printf("running command: %v", args)
 	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 	if err != nil || string(out) != "" {
-		// TODO(mpl): shouldn't be necessary, but just in case
-		killVPN()
 		return fmt.Errorf("%v: %v", err, string(out))
 	}
 	return nil
@@ -127,7 +118,6 @@ func getBoundIP(giveup time.Duration) (string, error) {
 		cmd.Env = os.Environ()
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			println("rtorrentrpc error with: " + string(out))
 			// TODO(mpl): Getting the "EOF" message from rtorrentrpc (too busy?) is super lame, I should fix rtorrentrpc
 			if !strings.HasSuffix(strings.TrimSpace(string(out)), "connection refused") {
 				time.Sleep(retryPause)
@@ -135,8 +125,8 @@ func getBoundIP(giveup time.Duration) (string, error) {
 				lastErr = fmt.Errorf("rtorrentrpc error: %v, %v", err, string(out))
 				continue
 			}
-			println("OK, RTORRENT NOT RUNNING")
 			// it's ok, rtorrent not running
+			printf("rtorrent not running, that's ok")
 			return "", noRtorrentErr
 		}
 		ip := parseResponse(string(out))
@@ -160,14 +150,14 @@ const (
 func parseResponse(xml string) string {
 	idx := strings.Index(xml, "<param><value><string>")
 	if idx <= 0 {
-		println("no beg pos")
+		printf("error while parsing bound ip response: no beg pos")
 		return ""
 	}
 	begin := idx + len(posHint)
 	xml = xml[begin:]
 	idx = strings.Index(xml, endHint)
 	if idx <= 0 {
-		println("no end pos")
+		printf("error while parsing bound ip response: no end pos")
 		return ""
 	}
 	return xml[:idx]
@@ -201,7 +191,7 @@ func resetBoundIP(newIP string) error {
 	ip, err := getBoundIP(giveup)
 	if err != nil {
 		if err == noRtorrentErr {
-			println("rtorrent not running, that's ok")
+			printf("rtorrent not running, that's ok")
 			return nil
 		}
 		return err
@@ -238,9 +228,8 @@ func setRouting(ip string) error {
 			printf("fallthrough because stickyErr")
 			return
 		}
-		stickyErr = runOrDie(strings.Fields(args)...)
+		stickyErr = runNoOutput(strings.Fields(args)...)
 	}
-	// TODO(mpl): mv runOrDie impl into checkErr ?
 	// mark packets that should go through the tunnel
 	checkErr("iptables -t nat -F")
 	checkErr("iptables -t mangle -F")
@@ -261,7 +250,6 @@ func mainLoop() error {
 	ip, err := getTunIP()
 	if err != nil {
 		if err != noTunErr {
-			// TODO(mpl): warn me
 			return err
 		}
 		if err := run(strings.Fields("/usr/sbin/service openvpn start ipredator")...); err != nil {
@@ -283,7 +271,7 @@ func mainLoop() error {
 	if *host != "" {
 		resp, err := http.Get(*host)
 		if err != nil || resp.StatusCode != 200 {
-			return fmt.Errorf("could not reach self at %v: %v", *host, err)
+			return fmt.Errorf("could not reach %v: %v", *host, err)
 		}
 		defer resp.Body.Close()
 	}
@@ -308,6 +296,19 @@ func killVPN() {
 
 func main() {
 	flag.Parse()
+	if *logfile != "" {
+		f, err := os.Create(*logfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Fatal(err)
+			}
+		}()
+		log.SetOutput(io.MultiWriter(os.Stderr, f))
+	}
+
 	// We could remove that loop and use cron instead BUT, I don't want risking cron starting an instance while a previous one is still running, hence why we control it from here.
 	for {
 		if err := mainLoop(); err != nil {
@@ -319,33 +320,3 @@ func main() {
 		time.Sleep(time.Duration(*interval) * time.Second)
 	}
 }
-
-/*
-func main() {
-	flag.Parse()
-	checkFlags()
-	ipredIP = flag.Args()[0]
-	checkBinding()
-
-		jobInterval := time.Duration(*interval) * time.Second
-		cron := gocron.Cron{
-			Interval: jobInterval,
-			Job:      syncBlobs,
-			Mail: &gocron.MailAlert{
-				Subject: "Syncblobs error",
-				To:      []string{"mpl@mpl.fr.eu.org"},
-				From:    *emailFrom,
-				SMTP:    "serenity:25",
-			},
-			Notif: &gocron.Notification{
-				Host: fmt.Sprintf("localhost:%d", *notiPort),
-				Msg:  "Syncblobs error",
-			},
-			File: &gocron.StaticFile{
-				Path: "/home/mpl/var/log/syncblobs.log",
-				Msg:  "gocron error",
-			},
-		}
-		cron.Run()
-}
-*/
