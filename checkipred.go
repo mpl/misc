@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	interval       = flag.Int("interval", 10, "Interval between runs, in seconds. use 0 to run only once.")
+	interval       = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
 	resetRtorrent  = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
 	webDestPort    = flag.String("webport", "8080", "port that will get all packets destined to port 80")
 	webDestPortTLS = flag.String("webportTLS", "4443", "port that will get all packets destined to port 443")
