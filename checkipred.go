@@ -16,7 +16,6 @@ import (
 )
 
 var (
-	//	interval       = flag.Int("interval", 60, "Interval between runs, in seconds. use 0 to run only once.")
 	interval       = flag.Int("interval", 10, "Interval between runs, in seconds. use 0 to run only once.")
 	resetRtorrent  = flag.Bool("rtorrent", true, "Whether to reset rtorrent's bound ip (with rtorrentrpc)")
 	webDestPort    = flag.String("webport", "8080", "port that will get all packets destined to port 80")
@@ -86,7 +85,6 @@ func run(args ...string) error {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil || stderr.Len() != 0 {
-		//		killVPN()
 		return fmt.Errorf("%v: %v", err, stderr.String())
 	}
 	return nil
@@ -283,6 +281,7 @@ func mainLoop() error {
 }
 
 func killVPN() {
+	printf("killing vpn")
 	cmd := exec.Command("/usr/sbin/service", "openvpn", "stop", "ipredator")
 	var buff bytes.Buffer
 	cmd.Stderr = &buff
