@@ -1,6 +1,1 @@
--mgotests: obviously some tests with mgo to understand its behaviour.
-
--pidstatAvg: just a trivial way to average the cpu usage from the output of pidstat.
-
--to run only benches in benchIndices_test.go and ignore the rest in the dir:
-go test -bench'='BenchmarkCachedCdms benchIndices_test.go
+Miscellaneous pieces of code that do not deserve their own repo.
