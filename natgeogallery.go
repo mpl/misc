@@ -40,6 +40,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "usage: natgeogallery pageToParse baseURL\n")
 	fmt.Fprintf(os.Stderr, "Fetch all images found in the source of pageToParse that start with pattern baseURL\n.")
 	fmt.Fprintf(os.Stderr, "Example: natgeogallery http://news.nationalgeographic.com/2016/01/160123-snowzilla-blizzard-snowstorm-us-northeast-pictures/ http://news.nationalgeographic.com/content/dam/news/2016/01/23/snow_gallery/\n")
+	fmt.Fprintf(os.Stderr, "Example: natgeogallery http://news.nationalgeographic.com/2016/01/160123-snowzilla-blizzard-snowstorm-us-northeast-pictures/ /content/dam/news/2016/01/23/snow_gallery/\n")
 	flag.PrintDefaults()
 	os.Exit(2)
 }
@@ -68,6 +69,7 @@ func main() {
 	imgURL := make(map[string]bool)
 	scanner := bufio.NewScanner(bytes.NewReader(srcHTML))
 
+	// TODO(mpl): sometimes data-src is just a URL path (without the site root), so I should deal with that.
 	galleryPrefix := args[1]
 	galleryPattern := regexp.MustCompile(`.*data-src="(` + galleryPrefix + `.*?\.jpg).*"`)
 	for scanner.Scan() {
@@ -92,6 +94,10 @@ func main() {
 	}
 	i := 1
 	for k, _ := range imgURL {
+		if !strings.HasPrefix(k, "http") {
+			// TODO(mpl): poor man's fix for now
+			k = "http://news.nationalgeographic.com/" + strings.TrimPrefix(k, "/")
+		}
 		if *flagVerbose {
 			log.Printf("Fetching %v", k)
 		}
