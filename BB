@@ -1,0 +1,39 @@
+#!/bin/sh
+
+cat >/tmp/BB.go <<EOF
+// The BB command opens acme on a namespace different from the default one.
+// It creates the namespace directory if necessary.
+package main
+
+import (
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+)
+
+func main() {
+	namespace := "/tmp/ns2.mpl.:0"
+	acme := "/home/mpl/plan9/bin/acme"
+	plan9 := "/home/mpl/plan9"
+	font := filepath.Join(plan9, "font/fixed/anon/anon.14.font")
+	bin := filepath.Join(plan9, "bin")
+
+	if _, err := os.Stat(namespace); err != nil {
+		if !os.IsNotExist(err) {
+			log.Fatal(err)
+		}
+		if err := os.MkdirAll(namespace, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	args := append([]string{"-f", font}, os.Args[1:]...)
+	cmd := exec.Command(acme, args...)
+	cmd.Env = append(os.Environ(), "PLAN9="+plan9, "PATH="+bin, "NAMESPACE="+namespace)
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("%v, %s", err, string(err.(*exec.ExitError).Stderr))
+	}
+}
+EOF
+
+go run /tmp/BB.go $*
