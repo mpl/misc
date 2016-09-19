@@ -8,11 +8,12 @@ import (
 	"os/exec"
 	"time"
 
-	"camlistore.org/third_party/github.com/rwcarlsen/goexif/exif"
+	"github.com/rwcarlsen/goexif/exif"
 )
 
 var (
 	verbose = flag.Bool("v", false, "be verbose")
+	flagOffset = flag.Duration("offset", time.Hour, "how much to correct")
 )
 
 func fixTime(filename string, d time.Duration) {
@@ -65,6 +66,6 @@ func fixTime(filename string, d time.Duration) {
 func main() {
 	flag.Parse()
 	for _, v := range flag.Args() {
-		fixTime(v, time.Hour)
+		fixTime(v, *flagOffset)
 	}
 }
