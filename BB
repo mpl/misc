@@ -16,7 +16,8 @@ func main() {
 	namespace := "/tmp/ns2.mpl.:0"
 	acme := "/home/mpl/plan9/bin/acme"
 	plan9 := "/home/mpl/plan9"
-	font := filepath.Join(plan9, "font/fixed/anon/anon.14.font")
+	varfont := filepath.Join(plan9, "font/fixed/anon/anon.14.font")
+	fixedfont := filepath.Join(plan9, "font/fixed/unicode.10x20.font")
 	bin := filepath.Join(plan9, "bin")
 
 	if _, err := os.Stat(namespace); err != nil {
@@ -27,7 +28,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	args := append([]string{"-f", font}, os.Args[1:]...)
+	args := append([]string{"-f", varfont, "-F", fixedfont}, os.Args[1:]...)
 	cmd := exec.Command(acme, args...)
 	cmd.Env = append(os.Environ(), "PLAN9="+plan9, "PATH="+bin, "NAMESPACE="+namespace)
 	if err := cmd.Run(); err != nil {
