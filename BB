@@ -16,8 +16,11 @@ func main() {
 	namespace := "/tmp/ns2.mpl.:0"
 	acme := "/home/mpl/plan9/bin/acme"
 	plan9 := "/home/mpl/plan9"
-	varfont := filepath.Join(plan9, "font/fixed/anon/anon.14.font")
-	fixedfont := filepath.Join(plan9, "font/fixed/unicode.10x20.font")
+	// TODO(mpl): test if fontsrv is running, and if not, use anon font?
+//	varfont := filepath.Join(plan9, "font/fixed/anon/anon.14.font")
+//	fixedfont := filepath.Join(plan9, "font/fixed/unicode.10x20.font")
+	varfont := "/mnt/font/Go Mono/11a/font"
+	fixedfont := "/mnt/font/Go Regular/13a/font"
 	bin := filepath.Join(plan9, "bin")
 
 	if _, err := os.Stat(namespace); err != nil {
