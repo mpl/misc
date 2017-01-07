@@ -256,7 +256,7 @@ func setRouting(ip string) error {
 
 	// restore website redirections
 	checkErr("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 80 -j REDIRECT --to-port " + *webDestPort)
-	checkErr("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port " + *webDestPortTLS)
+	// checkErr("/sbin/iptables -A PREROUTING -t nat -i eth0 -p tcp --dport 443 -j REDIRECT --to-port " + *webDestPortTLS)
 	return stickyErr
 }
 
