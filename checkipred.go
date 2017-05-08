@@ -266,7 +266,8 @@ func mainLoop() error {
 		if err != noTunErr {
 			return err
 		}
-		if err := run(strings.Fields("/usr/sbin/service openvpn start ipredator")...); err != nil {
+		//		if err := run(strings.Fields("/usr/sbin/service openvpn start ipredator")...); err != nil {
+		if err := run(strings.Fields("/bin/systemctl start openvpn@ipredator.service")...); err != nil {
 			return err
 		}
 		time.Sleep(10 * time.Second)
@@ -298,7 +299,8 @@ func mainLoop() error {
 
 func killVPN() {
 	printf("killing vpn")
-	cmd := exec.Command("/usr/sbin/service", "openvpn", "stop", "ipredator")
+	//cmd := exec.Command("/usr/sbin/service", "openvpn", "stop", "ipredator")
+	cmd := exec.Command("/bin/systemctl", "stop", "openvpn@ipredator.service")
 	var buff bytes.Buffer
 	cmd.Stderr = &buff
 	err := cmd.Run()
