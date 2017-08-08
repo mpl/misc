@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 //	"io"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
@@ -29,10 +31,10 @@ func camtoolSearchBlobs() {
 }
 
 func main() {
-	camtoolSearchBlobs()
+	manyPermanodesWithLocation(1000)
 }
 
-func whatever() {
+func idontremember() {
 //	var vals []string
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
@@ -54,5 +56,46 @@ func whatever() {
 	}
 	if err := sc.Err(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func permanodeWithLocation(lat, long float64) error {
+	cmd := exec.Command("devcam", "put", "permanode", "-tag", "fake")
+	out, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+
+	sc := bufio.NewScanner(bytes.NewReader(out))
+	var pn string
+	for sc.Scan() {
+		l := sc.Text()
+		if !strings.HasPrefix(l, "sha1-") {
+			return fmt.Errorf("unexpected first line of output: %v", l)
+		}
+		pn = strings.TrimSpace(l)
+		break
+	}
+	
+	cmd = exec.Command("devcam", "put", "attr", pn, "latitude", fmt.Sprintf("%f", lat))
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("devcam", "put", "attr", pn, "longitude", fmt.Sprintf("%f", long))
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func manyPermanodesWithLocation(limit int) {
+	for i:=0; i<limit; i++ {
+		lat := rand.Float64()*89.99 - rand.Float64()*89.99
+		long := rand.Float64()*179.99 - rand.Float64()*179.99
+		if err := permanodeWithLocation(lat, long); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
