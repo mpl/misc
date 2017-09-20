@@ -21,7 +21,7 @@ func main() {
 //	fixedfont := filepath.Join(plan9, "font/fixed/unicode.10x20.font")
 	varfont := "/mnt/font/Go Mono/11a/font"
 	fixedfont := "/mnt/font/Go Regular/13a/font"
-	bin := filepath.Join(plan9, "bin")
+	shell := filepath.Join(plan9, "bin", "rc")
 
 	if _, err := os.Stat(namespace); err != nil {
 		if !os.IsNotExist(err) {
@@ -33,7 +33,10 @@ func main() {
 	}
 	args := append([]string{"-f", varfont, "-F", fixedfont}, os.Args[1:]...)
 	cmd := exec.Command(acme, args...)
-	cmd.Env = append(os.Environ(), "PLAN9="+plan9, "PATH="+bin, "NAMESPACE="+namespace)
+	// Since go1.9 the last en var in the slice is the one that counts, so we should
+	// override neither the PATH (harmful), nor the PLAN9 (benign) that is in
+	// os.Environ().
+	cmd.Env = append(os.Environ(), "NAMESPACE="+namespace, "SHELL="+shell)
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("%v, %s", err, string(err.(*exec.ExitError).Stderr))
 	}
