@@ -31,7 +31,7 @@ func camtoolSearchBlobs() {
 }
 
 func main() {
-	manyPermanodesWithLocation(1000)
+	manyPermanodesWithLocation(10000)
 }
 
 func idontremember() {
@@ -61,9 +61,9 @@ func idontremember() {
 
 func permanodeWithLocation(lat, long float64) error {
 	cmd := exec.Command("devcam", "put", "permanode", "-tag", "fake")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("camput error %v: %v", err, string(out))
 	}
 
 	sc := bufio.NewScanner(bytes.NewReader(out))
@@ -78,13 +78,13 @@ func permanodeWithLocation(lat, long float64) error {
 	}
 	
 	cmd = exec.Command("devcam", "put", "attr", pn, "latitude", fmt.Sprintf("%f", lat))
-	if err := cmd.Run(); err != nil {
-		return err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("latitude error %v: %v", err, string(out))
 	}
 
 	cmd = exec.Command("devcam", "put", "attr", pn, "longitude", fmt.Sprintf("%f", long))
-	if err := cmd.Run(); err != nil {
-		return err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("longitude error %v: %v", err, string(out))
 	}
 
 	return nil
@@ -97,5 +97,6 @@ func manyPermanodesWithLocation(limit int) {
 		if err := permanodeWithLocation(lat, long); err != nil {
 			log.Fatal(err)
 		}
+		println(i)
 	}
 }
