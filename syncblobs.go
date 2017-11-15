@@ -25,7 +25,7 @@ var (
 	emailFrom  = flag.String("emailfrom", "", "alert sender email address")
 	notiPort   = flag.Int("port", 0, "port for the local http server used for browser notifications")
 	interval   = flag.Int("interval", 3600, "Interval between runs, in seconds. use 0 to run only once.")
-	auth       = flag.String("auth", "", "Use this auth string instead of the one in the config file. Conflicts with -auth and -waitauth.")
+	auth       = flag.String("auth", "", "Use this auth string instead of the one in the config file. Conflicts with -askauth and -waitauth.")
 	askAuth    = flag.Bool("askauth", false, "Prompt for the auth string on stdin. Conflicts with -auth and -waitauth.")
 	listenAuth = flag.String("listenauth", "", "Listen on this address and wait for the auth string there. Conflicts with -auth and -askauth.")
 	debug      = flag.Bool("debug", false, "run only once, and not in a gocron")
@@ -41,11 +41,14 @@ func syncBlobs() error {
 		return fmt.Errorf("could not prepare config: %v", err)
 	}
 	defer restoreConfig()
-	args := []string{"sync", "-src=granivore", "-dest=/home/mpl/var/camlistore-granivore/blobs/"}
+	var args []string
+	if *debug {
+		args = append(args, "-verbose=true")
+	}
+	args = append(args, []string{"sync", "-src=granivore", "-dest=/home/mpl/var/camlistore-granivore/blobs/"}...)
 	cmd := exec.Command("/home/mpl/bin/camtool-grani", args...)
 	env := os.Environ()
 	env = append(env, "CAMLI_CONFIG_DIR="+configDir)
-	// TODO(mpl): -verbose to see output
 	cmd.Env = env
 	return cmd.Run()
 }
