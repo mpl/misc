@@ -43,7 +43,12 @@ func merge(dirPath string) error {
 
 	flim := ""
 	sub := ""
+	outFile := "out.mkv"
 	for _, name := range names {
+		if name == outFile {
+			log.Printf("%v already contains %v, skipping this dir", dirPath, outFile)
+			return nil
+		}
 		// TODO(mpl): take into account more extensions
 		if flim == "" && strings.HasSuffix(name, ".mkv") {
 			flim = name
@@ -58,9 +63,16 @@ func merge(dirPath string) error {
 	if sub == "" {
 		return fmt.Errorf("no sub found in dir %v", dirPath)
 	}
-
-	// TODO(mpl): demander Simon quelle est la command exacte qu'il veut.
-	cmd := exec.Command("mkvmerge", filepath.Join(dirPath, flim), filepath.Join(dirPath, sub))
+	args := []string{
+		"-o", filepath.Join(dirPath, outFile),
+		filepath.Join(dirPath, flim),
+		"--language", "0:fre",
+		"--track-name", "0:Forced",
+		"--forced-track", "0:yes",
+		"--default-track", "0:yes",
+		filepath.Join(dirPath, sub),
+	}
+	cmd := exec.Command("mkvmerge", args...)
 	var buf bytes.Buffer
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
