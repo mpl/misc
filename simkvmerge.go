@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+var (
+	flagVerbose = flag.Bool("v", false, "be verbose")
+)
+
 func main() {
 	flag.Parse()
 
@@ -23,9 +27,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	done := 0
 	for _, name := range names {
 		if err := merge(name); err != nil {
 			log.Printf("%v", err)
+			continue
+		}
+		if *flagVerbose {
+			done++
+			log.Printf("%v done. %d/%d directories done.", done, len(names))
 		}
 	}
 }
@@ -36,6 +46,13 @@ func merge(dirPath string) error {
 		return err
 	}
 	defer dir.Close()
+	fi, err := dir.Stat()
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return nil
+	}
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
 		return err
