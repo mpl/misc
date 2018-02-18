@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -12,7 +13,8 @@ import (
 )
 
 var (
-	flagVerbose = flag.Bool("v", false, "be verbose")
+	flagVerbose        = flag.Bool("v", false, "be verbose")
+	flagRemoveOriginal = flag.Bool("remove_original", false, "on success, overwrite the old original file with the newly produced one (out.mkv)")
 )
 
 func main() {
@@ -32,6 +34,12 @@ func main() {
 		if err := merge(name); err != nil {
 			log.Printf("%v", err)
 			continue
+		}
+		if *flagRemoveOriginal {
+			if err := overwriteOriginal(name); err != nil {
+				log.Printf("%v", err)
+				continue
+			}
 		}
 		if *flagVerbose {
 			done++
@@ -96,4 +104,100 @@ func merge(dirPath string) error {
 		return fmt.Errorf("mkvmerge error: %v, %v", err, buf.String())
 	}
 	return nil
+}
+
+func overwriteOriginal(dirPath string) error {
+	dir, err := os.Open(dirPath)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	fi, err := dir.Stat()
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return nil
+	}
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+
+	flim := ""
+	outFile := "out.mkv"
+	outFound := false
+	for _, name := range names {
+		if name == outFile {
+			outFound = true
+		}
+		// TODO(mpl): take into account more extensions
+		if flim == "" && name != outFile && strings.HasSuffix(name, ".mkv") {
+			flim = name
+		}
+	}
+	if flim == "" {
+		return fmt.Errorf("no flim found in dir %v", dirPath)
+	}
+	if !outFound {
+		if *flagVerbose {
+			log.Printf("No %v found in %v, nothing to overwrite", outFile, dirPath)
+		}
+		return nil
+	}
+
+	flimFullpath := filepath.Join(dirPath, flim)
+	cmd := exec.Command("mkvmerge", "-i", flimFullpath)
+	var buf bytes.Buffer
+	cmd.Stderr = &buf
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("mkvmerge error for %v: %v, %v", flimFullpath, err, buf.String())
+	}
+	oriCount, err := countSublines(out)
+	if err != nil {
+		return err
+	}
+
+	outFullpath := filepath.Join(dirPath, outFile)
+	cmd = exec.Command("mkvmerge", "-i", outFullpath)
+	cmd.Stderr = &buf
+	out, err = cmd.Output()
+	if err != nil {
+		return fmt.Errorf("mkvmerge error for %v: %v, %v", outFullpath, err, buf.String())
+	}
+	outCount, err := countSublines(out)
+	if err != nil {
+		return err
+	}
+
+	if outCount <= oriCount {
+		if *flagVerbose {
+			log.Printf("%v does not have more subtitles than %v; refusing to overwriting %v", outFullpath, flimFullpath, flimFullpath)
+		}
+		return nil
+	}
+	if err := os.Rename(outFullpath, flimFullpath); err != nil {
+		return err
+	}
+	if *flagVerbose {
+		log.Printf("%v successfully overwritten", flimFullpath)
+	}
+	return nil
+}
+
+func countSublines(input []byte) (int, error) {
+	count := 0
+	sc := bufio.NewScanner(bytes.NewReader(input))
+	for sc.Scan() {
+		l := sc.Text()
+		if strings.Contains(l, "subtitles") {
+			count++
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return 0, err
+	}
+	return count, nil
+
 }
