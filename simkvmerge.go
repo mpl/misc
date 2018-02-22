@@ -43,7 +43,7 @@ func main() {
 		}
 		if *flagVerbose {
 			done++
-			log.Printf("%v done. %d/%d directories done.", done, len(names))
+			log.Printf("%v done. %d/%d directories done.", name, done, len(names))
 		}
 	}
 }
