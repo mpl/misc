@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -31,8 +32,12 @@ func main() {
 	}
 	done := 0
 	for _, name := range names {
-		if err := merge(name); err != nil {
+		skip, err := merge(name)
+		if err != nil {
 			log.Printf("%v", err)
+			continue
+		}
+		if skip {
 			continue
 		}
 		if *flagRemoveOriginal {
@@ -48,22 +53,22 @@ func main() {
 	}
 }
 
-func merge(dirPath string) error {
+func merge(dirPath string) (bool, error) {
 	dir, err := os.Open(dirPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer dir.Close()
 	fi, err := dir.Stat()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !fi.IsDir() {
-		return nil
+		return true, nil
 	}
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	flim := ""
@@ -71,8 +76,8 @@ func merge(dirPath string) error {
 	outFile := "out.mkv"
 	for _, name := range names {
 		if name == outFile {
-			log.Printf("%v already contains %v, skipping this dir", dirPath, outFile)
-			return nil
+			log.Printf("%v already contains %v, skipping merging for this dir", dirPath, outFile)
+			return false, nil
 		}
 		// TODO(mpl): take into account more extensions
 		if flim == "" && strings.HasSuffix(name, ".mkv") {
@@ -83,14 +88,25 @@ func merge(dirPath string) error {
 		}
 	}
 	if flim == "" {
-		return fmt.Errorf("no flim found in dir %v", dirPath)
+		return false, fmt.Errorf("no flim found in dir %v", dirPath)
+	}
+	fullFlimPath := filepath.Join(dirPath, flim)
+	hasFrenchSub, err := hasFrSub(fullFlimPath)
+	if err != nil {
+		return false, fmt.Errorf("error while scanning for french subs: %v", err)
+	}
+	if hasFrenchSub {
+		if *flagVerbose {
+			log.Printf("Skipping merging for %v because it already has french subs", fullFlimPath)
+		}
+		return true, nil
 	}
 	if sub == "" {
-		return fmt.Errorf("no sub found in dir %v", dirPath)
+		return false, fmt.Errorf("no sub found in dir %v", dirPath)
 	}
 	args := []string{
 		"-o", filepath.Join(dirPath, outFile),
-		filepath.Join(dirPath, flim),
+		fullFlimPath,
 		"--language", "0:fre",
 		"--track-name", "0:Forced",
 		"--forced-track", "0:yes",
@@ -101,9 +117,32 @@ func merge(dirPath string) error {
 	var buf bytes.Buffer
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("mkvmerge error: %v, %v", err, buf.String())
+		return false, fmt.Errorf("mkvmerge error: %v, %v", err, buf.String())
 	}
-	return nil
+	return false, nil
+}
+
+var frSubRxp = regexp.MustCompile(`^    Stream #\d:\d\(fre\): Subtitle:.*`)
+
+func hasFrSub(flimPath string) (bool, error) {
+	cmd := exec.Command("ffmpeg", "-i", flimPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// TODO(mpl): this is to ignore the error from ffmpeg that we get because we do
+		// not give an output file. It is disgusting. We should instead use another
+		// command, or maybe some obscure ffmpeg option.
+		if !bytes.HasSuffix(out, []byte("At least one output file must be specified\n")) {
+			return false, fmt.Errorf("ffmpeg error for %v: %v, %v", flimPath, err, string(out))
+		}
+	}
+	sc := bufio.NewScanner(bytes.NewReader(out))
+	for sc.Scan() {
+		l := sc.Text()
+		if frSubRxp.MatchString(l) {
+			return true, nil
+		}
+	}
+	return false, sc.Err()
 }
 
 func overwriteOriginal(dirPath string) error {
@@ -199,5 +238,4 @@ func countSublines(input []byte) (int, error) {
 		return 0, err
 	}
 	return count, nil
-
 }
