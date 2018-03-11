@@ -9,17 +9,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
 var (
 	flagVerbose        = flag.Bool("v", false, "be verbose")
 	flagRemoveOriginal = flag.Bool("remove_original", false, "on success, overwrite the old original file with the newly produced one (out.mkv)")
+	flagAlt            = flag.Bool("alt", false, "for testing pieces of new code")
 )
 
 func main() {
 	flag.Parse()
+
+	if *flagAlt {
+		alt()
+		return
+	}
 
 	dir, err := os.Open(".")
 	if err != nil {
@@ -51,6 +56,14 @@ func main() {
 			log.Printf("%v done. %d/%d directories done.", name, done, len(names))
 		}
 	}
+}
+
+func alt() {
+	hasFrenchSub, err := hasFrSub("/home/mpl/media/flims/30days.mkv")
+	if err != nil {
+		log.Fatalf("error while scanning for french subs: %v", err)
+	}
+	println(hasFrenchSub)
 }
 
 func merge(dirPath string) (bool, error) {
@@ -122,24 +135,29 @@ func merge(dirPath string) (bool, error) {
 	return false, nil
 }
 
-var frSubRxp = regexp.MustCompile(`^    Stream #\d:\d\(fre\): Subtitle:.*`)
-
 func hasFrSub(flimPath string) (bool, error) {
-	cmd := exec.Command("ffmpeg", "-i", flimPath)
+	cmd := exec.Command("mkvinfo", flimPath)
+	cmd.Env = append(os.Environ(), "LANG=en_US.UTF-8")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// TODO(mpl): this is to ignore the error from ffmpeg that we get because we do
-		// not give an output file. It is disgusting. We should instead use another
-		// command, or maybe some obscure ffmpeg option.
-		if !bytes.HasSuffix(out, []byte("At least one output file must be specified\n")) {
-			return false, fmt.Errorf("ffmpeg error for %v: %v, %v", flimPath, err, string(out))
-		}
+		return false, err
 	}
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	for sc.Scan() {
 		l := sc.Text()
-		if frSubRxp.MatchString(l) {
-			return true, nil
+		if !strings.HasPrefix(l, "|  + Track type: subtitles") {
+			continue
+		}
+		for sc.Scan() {
+			ll := sc.Text()
+			if !strings.HasPrefix(ll, "|  + Language:") {
+				continue
+			}
+			lang := strings.TrimPrefix(ll, "|  + Language: ")
+			if lang == "fre" {
+				return true, nil
+			}
+			break
 		}
 	}
 	return false, sc.Err()
