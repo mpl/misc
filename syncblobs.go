@@ -46,11 +46,16 @@ func syncBlobs() error {
 		args = append(args, "-verbose=true")
 	}
 	args = append(args, []string{"sync", "-src=granivore", "-dest=/home/mpl/var/camlistore-granivore/blobs/"}...)
-	cmd := exec.Command("/home/mpl/bin/camtool-grani", args...)
+	cmd := exec.Command("/home/mpl/bin/grani-camtool", args...)
+	var buf bytes.Buffer
+	cmd.Stderr = &buf
 	env := os.Environ()
 	env = append(env, "CAMLI_CONFIG_DIR="+configDir)
 	cmd.Env = env
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("syncBlobs error: %v, %v", err, buf.String())
+	}
+	return nil
 }
 
 func serverURL() (string, error) {
@@ -92,9 +97,11 @@ func testCreds() error {
 	userpass := strings.Replace(*auth, "userpass:", "", 1)
 	args := []string{"-u", userpass, url}
 	cmd := exec.Command("/usr/bin/curl", args...)
+	var buf bytes.Buffer
+	cmd.Stderr = &buf
 	out, err := cmd.Output()
 	if err != nil {
-		return err
+		return fmt.Errorf("error when testing credentials with curl: %v, %v", err, buf.String())
 	}
 	if bytes.Contains(out, []byte("<html><body><h1>Unauthorized</h1>")) {
 		return errors.New("Wrong credentials")
