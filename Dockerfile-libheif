@@ -1,0 +1,23 @@
+# Copyright 2018 The Perkeep Authors.
+FROM ubuntu:latest
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update && apt-get -y upgrade
+RUN apt-get -y --no-install-recommends install curl gcc automake pkg-config autoconf autotools-dev libtool g++
+RUN apt-get -y --no-install-recommends install ca-certificates libc6-dev
+RUN apt-get -y --no-install-recommends install git libde265-0
+
+RUN apt-get -y --no-install-recommends install 
+
+WORKDIR /tmp
+RUN mkdir -p github.com/strukturag
+WORKDIR github.com/strukturag
+RUN git clone https://github.com/strukturag/libheif
+WORKDIR libheif
+RUN git reset --hard 72c2873923ee28d608963c1c0eecfc441bf0ca10
+RUN ./autogen.sh
+RUN ./configure
+RUN make
+
+RUN ls -l examples/heif-info
+
+CMD /bin/bash
