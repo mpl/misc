@@ -45,7 +45,7 @@ func syncBlobs() error {
 	if *debug {
 		args = append(args, "-verbose=true")
 	}
-	args = append(args, []string{"sync", "-src=granivore", "-dest=/home/mpl/var/camlistore-granivore/blobs/"}...)
+	args = append(args, []string{"sync", "-src=granivore", "-dest=/home/mpl/var/perkeep-granivore/blobs/"}...)
 	cmd := exec.Command("/home/mpl/bin/grani-pk", args...)
 	var buf bytes.Buffer
 	cmd.Stderr = &buf
