@@ -22,12 +22,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 
 	"github.com/mpl/basicauth"
+	"github.com/mpl/simpletls"
 )
 
 const (
@@ -35,10 +37,12 @@ const (
 )
 
 var (
-	host     = flag.String("host", "0.0.0.0:3179", "listening port and hostname")
+	host     = flag.String("host", "0.0.0.0:443", "listening port and hostname")
 	help     = flag.Bool("h", false, "show this help")
-	flagUserpass = flag.String("userpass", "one:two", "optional username:password protection")
-	flagTLS   = flag.Bool("tls", false, `For https. If "key.pem" or "cert.pem" are not found in $HOME/keys/, in-memory self-signed are generated and used instead.`)
+	flagUserpass = flag.String("userpass", "", "optional username:password protection")
+	flagTLS   = flag.Bool("tls", false, `For https. Requires "key.pem" and "cert.pem" in $HOME/keys.`)
+	flagProxyURL     = flag.String("proxyurl", "http://localhost:3179", "URL to proxy to")
+	flagVerbose = flag.Bool("verbose", false, "be verbose")
 )
 
 var (
@@ -63,10 +67,8 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 		title := r.URL.Path
 		w.Header().Set("Server", idstring)
 		if isAllowed(r) {
-			println("PROXY: IS ALLOWED")
 			fn(w, r, title)
 		} else {
-			println("PROXY: NOT ALLOWED")
 			basicauth.SendUnauthorized(w, r, "proxy NOPE")
 		}
 	}
@@ -99,9 +101,24 @@ func main() {
 		usage()
 	}
 
+	if *flagVerbose {
+		basicauth.Verbose = true
+	}
+
 	initUserPass()
 
-	proxyURL, err := url.Parse("http://172.17.0.2:3179/")
+	var err error
+	var listener net.Listener
+	if *flagTLS {
+		listener, err = simpletls.Listen(*host)
+	} else {
+		listener, err = net.Listen("tcp", *host)
+	}
+	if err != nil {
+		log.Fatalf("Failed to listen on %s: %v", *host, err)
+	}
+
+	proxyURL, err := url.Parse(*flagProxyURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -110,7 +127,7 @@ func main() {
 	http.Handle("/", makeHandler(func(w http.ResponseWriter, r *http.Request, whatever string) {
 		proxy.ServeHTTP(w, r)
 	}))
-	if err = http.ListenAndServe(":3179", nil); err != nil {
+	if err = http.Serve(listener, nil); err != nil {
 		log.Fatalf("Error in http server: %v\n", err)
 	}
 }
