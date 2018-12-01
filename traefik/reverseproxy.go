@@ -9,33 +9,29 @@ import (
 	"log"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+	//	"golang.org/x/net/http2"
 
-//	"golang.org/x/net/http2"
+	"github.com/oxtoacart/bpool"
 )
 
 const (
-	idstring   = "http://golang.org/pkg/http/#ListenAndServe"
-)
-
-// subdomains we reverse proxy to.
-var (
-	hosts []string
-
-	pkProxy   http.Handler
-	picsProxy    http.Handler
-	websiteProxy http.Handler
+	idstring = "http://golang.org/pkg/http/#ListenAndServe"
 )
 
 var (
-	help    = flag.Bool("h", false, "show this help")
-	flagDebug   = flag.Bool("v", false, "log some stuff")
-	flagHost = flag.String("host", ":80", "host:port on which to listen")
-
+	proxy  http.Handler
 	logger *log.Logger
+)
+
+var (
+	help      = flag.Bool("h", false, "show this help")
+	flagDebug = flag.Bool("v", false, "log some stuff")
+	flagHost  = flag.String("host", "home.granivo.re:8080", "host:port on which to listen")
 )
 
 func usage() {
@@ -58,43 +54,37 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	}
 }
 
-func pkHandler(w http.ResponseWriter, r *http.Request) {
-	logger.Printf("for perkeep proxy: %v", r.URL.Path)
-	pkProxy.ServeHTTP(w, r)
+func proxyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.Printf("proxying: %v", r.URL.Path)
+	proxy.ServeHTTP(w, r)
 }
 
-func picsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.Printf("for pics proxy: %v", r.URL.Path)
-	picsProxy.ServeHTTP(w, r)
+func noProxyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.Printf("Not proxying: %v", r.URL.Path)
+	w.Write([]byte("Not proxying"))
 }
 
-func websiteHandler(w http.ResponseWriter, r *http.Request) {
-	logger.Printf("for website proxy: %v", r.URL.Path)
-	websiteProxy.ServeHTTP(w, r)
-}
-
-func initProxies() {
-	frontEndHost := "home.granivo.re"
-
-	pkHost := "pk." + frontEndHost
+func initProxies(bp *bpool.BytePool) {
+	frontEndHost, _, err := net.SplitHostPort(*flagHost)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if frontEndHost == "" {
+		frontEndHost = "localhost"
+	}
+	webHost := "web." + frontEndHost
 	frontEndBaseURL := "http://" + frontEndHost
-	hosts = []string{frontEndHost, pkHost}
 
-	picsBaseURL := frontEndBaseURL + ":3178"
-	picsProxyUrl, _ := url.Parse(picsBaseURL)
-	picsProxy = newSingleHostReverseProxy(picsProxyUrl)
-	http.HandleFunc(pkHost+"/pics/", makeHandler(picsHandler))
-	http.HandleFunc(frontEndHost+"/pics/", makeHandler(picsHandler))
+	baseURL := frontEndBaseURL + ":8081"
+	proxyUrl, _ := url.Parse(baseURL)
+	proxy = newSingleHostReverseProxy(proxyUrl)
+	proxy.(*reverseProxy).pool = bp
 
-	pkBaseURL := "http://" + pkHost + ":3178"
-	pkProxyUrl, _ := url.Parse(pkBaseURL)
-	pkProxy = newSingleHostReverseProxy(pkProxyUrl)
-	http.HandleFunc(pkHost+"/", makeHandler(pkHandler))
+	// TODO(mpl): verify what to do if we want /web on the proxy to correspond to / on the backend. IIRC it's the role of the backend.
 
-	websiteBaseURL := frontEndBaseURL + ":4430"
-	websiteProxyUrl, _ := url.Parse(websiteBaseURL)
-	websiteProxy = newSingleHostReverseProxy(websiteProxyUrl)
-	http.HandleFunc("/", makeHandler(websiteHandler))
+	http.HandleFunc("/web/", makeHandler(proxyHandler))
+	http.HandleFunc(webHost+"/", makeHandler(proxyHandler))
+	http.HandleFunc("/", makeHandler(noProxyHandler))
 
 }
 
@@ -116,16 +106,17 @@ func main() {
 		logger = log.New(ioutil.Discard, "", 0)
 	}
 
-	initProxies()
+	bp := bpool.NewBytePool(100, 1024)
+	initProxies(bp)
 
 	ln, err := net.Listen("tcp", *flagHost)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	srv := &http.Server{
-		ReadTimeout: 10 * time.Second,
+		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
-		IdleTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 	go func() {
 		if err := srv.Serve(ln); err != nil {
@@ -152,17 +143,10 @@ type reverseProxy struct {
 	// If nil, http.DefaultTransport is used.
 	transport http.RoundTripper
 
-	// BufferPool optionally specifies a buffer pool to
+	// pool optionally specifies a buffer pool to
 	// get byte slices for use by io.CopyBuffer when
 	// copying HTTP response bodies.
-	BufferPool BufferPool
-}
-
-// A BufferPool is an interface for getting and returning temporary
-// byte slices for use by io.CopyBuffer.
-type BufferPool interface {
-	Get() []byte
-	Put([]byte)
+	pool *bpool.BytePool
 }
 
 func singleJoiningSlash(a, b string) string {
@@ -243,10 +227,13 @@ func (p *reverseProxy) handleError(rw http.ResponseWriter, req *http.Request, er
 func (p *reverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
+	// TODO(mpl): small alloc here
 	outreq := req.WithContext(ctx) // includes shallow copies of maps, but okay
 	if req.ContentLength == 0 {
 		outreq.Body = nil // Issue 16036: nil Body for http.Transport retries
 	}
+
+	// TODO(mpl): alloc here too
 	outreq.Header = cloneHeader(req.Header)
 	p.director(outreq)
 	outreq.Close = false
@@ -296,9 +283,9 @@ func removeConnectionHeaders(h http.Header) {
 
 func (p *reverseProxy) copyResponse(dst io.Writer, src io.Reader) error {
 	var buf []byte
-	if p.BufferPool != nil {
-		buf = p.BufferPool.Get()
-		defer p.BufferPool.Put(buf)
+	if p.pool != nil {
+		buf = p.pool.Get()
+		defer p.pool.Put(buf)
 	}
 	_, err := p.copyBuffer(dst, src, buf)
 	return err
@@ -314,7 +301,7 @@ func (p *reverseProxy) copyBuffer(dst io.Writer, src io.Reader, buf []byte) (int
 	for {
 		nr, rerr := src.Read(buf)
 		if rerr != nil && rerr != io.EOF && rerr != context.Canceled {
-			p.logf("httputil: ReverseProxy read error during body copy: %v", rerr)
+			p.logf("reverseProxy: read error during body copy: %v", rerr)
 		}
 		if nr > 0 {
 			nw, werr := dst.Write(buf[:nr])
