@@ -9,7 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
+	//	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"strings"
@@ -80,8 +80,6 @@ func initProxies(bp *bpool.BytePool) {
 	proxy = newSingleHostReverseProxy(proxyUrl)
 	proxy.(*reverseProxy).pool = bp
 
-	// TODO(mpl): verify what to do if we want /web on the proxy to correspond to / on the backend. IIRC it's the role of the backend.
-
 	http.HandleFunc("/web/", makeHandler(proxyHandler))
 	http.HandleFunc(webHost+"/", makeHandler(proxyHandler))
 	http.HandleFunc("/", makeHandler(noProxyHandler))
@@ -131,17 +129,13 @@ func main() {
 // sends it to another server, proxying the response back to the
 // client.
 type reverseProxy struct {
-	// Director must be a function which modifies
-	// the request into a new request to be sent
-	// using Transport. Its response is then copied
+	// director must be a function which modifies
+	// the request into a new request to be sent.
+	// Its response is then copied
 	// back to the original client unmodified.
 	// Director must not access the provided Request
 	// after returning.
 	director func(*http.Request)
-
-	// The transport used to perform proxy requests.
-	// If nil, http.DefaultTransport is used.
-	transport http.RoundTripper
 
 	// pool optionally specifies a buffer pool to
 	// get byte slices for use by io.CopyBuffer when
@@ -227,13 +221,13 @@ func (p *reverseProxy) handleError(rw http.ResponseWriter, req *http.Request, er
 func (p *reverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
-	// TODO(mpl): small alloc here
+	// Small alloc here
 	outreq := req.WithContext(ctx) // includes shallow copies of maps, but okay
 	if req.ContentLength == 0 {
 		outreq.Body = nil // Issue 16036: nil Body for http.Transport retries
 	}
 
-	// TODO(mpl): alloc here too
+	// Small alloc here
 	outreq.Header = cloneHeader(req.Header)
 	p.director(outreq)
 	outreq.Close = false
