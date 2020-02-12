@@ -12,14 +12,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mpl/gocron"
 )
-
-const configDir = "/home/mpl/.config/granivore/"
 
 var (
 	emailFrom  = flag.String("emailfrom", "", "alert sender email address")
@@ -29,6 +28,13 @@ var (
 	askAuth    = flag.Bool("askauth", false, "Prompt for the auth string on stdin. Conflicts with -auth and -waitauth.")
 	listenAuth = flag.String("listenauth", "", "Listen on this address and wait for the auth string there. Conflicts with -auth and -askauth.")
 	debug      = flag.Bool("debug", false, "run only once, and not in a gocron")
+)
+
+var (
+	home = os.Getenv("HOME")
+	configDir = filepath.Join(home, ".config/granivore")
+	binDir = filepath.Join(home, "bin")
+	varDir string
 )
 
 func syncBlobs() error {
@@ -45,8 +51,9 @@ func syncBlobs() error {
 	if *debug {
 		args = append(args, "-verbose=true")
 	}
-	args = append(args, []string{"sync", "-src=granivore", "-dest=/home/mpl/var/perkeep-granivore/blobs/"}...)
-	cmd := exec.Command("/home/mpl/bin/grani-pk", args...)
+	blobsDir := filepath.Join(varDir, "perkeep-granivore/blobs")
+	args = append(args, []string{"sync", "-src=granivore", "-dest="+blobsDir}...)
+	cmd := exec.Command(filepath.Join(binDir, "grani-pk"), args...)
 	var buf bytes.Buffer
 	cmd.Stderr = &buf
 	env := os.Environ()
@@ -215,6 +222,12 @@ func main() {
 	flag.Parse()
 	checkFlags()
 
+	if runtime.GOOS == "darwin" {
+		varDir = filepath.Join(home, "Library")
+	} else {
+		varDir = filepath.Join(home, "var")
+	}
+
 	if *listenAuth != "" {
 		cAuth = make(chan string)
 		go func() {
@@ -265,7 +278,7 @@ func main() {
 			Msg:  "Syncblobs error",
 		},
 		File: &gocron.StaticFile{
-			Path: "/home/mpl/var/log/syncblobs.log",
+			Path: filepath.Join(varDir, "log/syncblobs.log"),
 			Msg:  "gocron error",
 		},
 	}
